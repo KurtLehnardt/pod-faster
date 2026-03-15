@@ -51,7 +51,7 @@ export function AppShell({ children, userEmail, userDisplayName }: AppShellProps
       </div>
 
       {/* Persistent player bar */}
-      <PlayerBar visible={false} />
+      <PlayerBar />
     </div>
   );
 }
