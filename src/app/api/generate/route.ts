@@ -50,10 +50,19 @@ export async function POST(request: NextRequest) {
   // Fetch the episode — verify ownership and that it's in a startable state
   const { data: episode, error } = await supabase
     .from("episodes")
-    .select()
+    .select("*")
     .eq("id", body.episodeId)
     .eq("user_id", user.id)
-    .single();
+    .single<{
+      id: string;
+      user_id: string;
+      status: string;
+      topic_query: string;
+      style: string;
+      tone: string;
+      length_minutes: number;
+      voice_config: unknown;
+    }>();
 
   if (error || !episode) {
     return NextResponse.json({ error: "Episode not found" }, { status: 404 });
