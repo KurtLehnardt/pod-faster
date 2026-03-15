@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send } from "lucide-react";
+import { Send, Podcast } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageBubble } from "./message-bubble";
 import { VoiceInputButton } from "./voice-input-button";
 import { TopicChips } from "./topic-chips";
+import { EpisodeConfig } from "@/components/episodes/episode-config";
 import { useChat } from "@/lib/hooks/use-chat";
 import { useVoiceInput } from "@/lib/hooks/use-voice-input";
 
@@ -45,6 +46,10 @@ export function ChatInterface() {
   const [inputValue, setInputValue] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Episode config dialog state
+  const [episodeDialogOpen, setEpisodeDialogOpen] = useState(false);
+  const [episodeTopic, setEpisodeTopic] = useState("");
 
   // When voice transcript updates, append to input
   useEffect(() => {
@@ -89,13 +94,17 @@ export function ChatInterface() {
     }
   }, [isListening, startListening, stopListening]);
 
-  const handleTopicSelect = useCallback(
-    (topic: string) => {
-      setInputValue(`Create a podcast episode about: ${topic}`);
-      inputRef.current?.focus();
-    },
-    []
-  );
+  const handleTopicSelect = useCallback((topic: string) => {
+    setEpisodeTopic(topic);
+    setEpisodeDialogOpen(true);
+  }, []);
+
+  const handleGenerateClick = useCallback(() => {
+    // Use the first topic if available, otherwise open empty
+    const topic = topics.length > 0 ? topics[0] : "";
+    setEpisodeTopic(topic);
+    setEpisodeDialogOpen(true);
+  }, [topics]);
 
   const hasMessages = messages.length > 0;
 
@@ -166,17 +175,36 @@ export function ChatInterface() {
           </Button>
 
           {hasMessages && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearChat}
-              className="text-xs text-muted-foreground shrink-0"
-            >
-              Clear
-            </Button>
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleGenerateClick}
+                className="shrink-0 gap-1.5"
+                aria-label="Generate podcast episode"
+              >
+                <Podcast className="size-3.5" />
+                Generate
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearChat}
+                className="text-xs text-muted-foreground shrink-0"
+              >
+                Clear
+              </Button>
+            </>
           )}
         </div>
       </div>
+
+      {/* Episode config dialog */}
+      <EpisodeConfig
+        initialTopic={episodeTopic}
+        open={episodeDialogOpen}
+        onOpenChange={setEpisodeDialogOpen}
+      />
     </div>
   );
 }
