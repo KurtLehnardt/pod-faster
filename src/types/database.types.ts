@@ -71,6 +71,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       topics: {
         Row: {
@@ -97,6 +98,15 @@ export interface Database {
           is_active?: boolean;
           created_at?: string;
         };
+        Relationships: [
+          {
+            foreignKeyName: "topics_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       episodes: {
         Row: {
@@ -162,6 +172,15 @@ export interface Database {
           created_at?: string;
           completed_at?: string | null;
         };
+        Relationships: [
+          {
+            foreignKeyName: "episodes_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       voice_presets: {
         Row: {
@@ -194,6 +213,15 @@ export interface Database {
           is_system?: boolean;
           created_at?: string;
         };
+        Relationships: [
+          {
+            foreignKeyName: "voice_presets_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       chat_messages: {
         Row: {
@@ -223,6 +251,22 @@ export interface Database {
           metadata?: Json | null;
           created_at?: string;
         };
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "chat_messages_episode_id_fkey";
+            columns: ["episode_id"];
+            isOneToOne: false;
+            referencedRelation: "episodes";
+            referencedColumns: ["id"];
+          },
+        ];
       };
     };
     Views: Record<string, never>;
