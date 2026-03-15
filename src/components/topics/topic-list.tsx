@@ -96,10 +96,10 @@ export function TopicList({ initialTopics, userId }: TopicListProps) {
           description: newDescription.trim() || null,
           is_active: true,
         })
-        .select()
-        .single();
+        .select("id, user_id, name, description, is_active, created_at")
+        .single<Topic>();
 
-      if (error) throw error;
+      if (error || !data) throw error;
       setTopics((prev) => [data, ...prev]);
       setNewName("");
       setNewDescription("");

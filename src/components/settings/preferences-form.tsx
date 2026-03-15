@@ -107,7 +107,7 @@ export function PreferencesForm({ profile }: PreferencesFormProps) {
         </div>
         <Slider
           value={[defaultLength]}
-          onValueChange={(val: number[]) => setDefaultLength(val[0])}
+          onValueChange={(val) => setDefaultLength(Array.isArray(val) ? val[0] : val)}
           min={1}
           max={30}
           step={1}
