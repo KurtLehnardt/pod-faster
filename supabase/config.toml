@@ -1,13 +1,12 @@
 # Supabase CLI configuration for pod-faster
 # https://supabase.com/docs/guides/cli/config
 
-[project]
-id = "vwakivzxdevkjzigplpu"
+project_id = "vwakivzxdevkjzigplpu"
 
 [db]
 port = 54322
 shadow_port = 54320
-major_version = 15
+major_version = 17
 
 [db.pooler]
 enabled = false

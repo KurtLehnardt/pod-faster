@@ -8,6 +8,10 @@ export async function GET() {
     return NextResponse.json({ voices });
   } catch (error) {
     if (error instanceof ElevenLabsError) {
+      // Return empty list when API key is not configured
+      if (error.status === 503) {
+        return NextResponse.json({ voices: [] });
+      }
       return NextResponse.json(
         { error: "Failed to fetch voices", detail: error.message },
         { status: error.status >= 500 ? 502 : error.status }

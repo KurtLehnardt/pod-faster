@@ -21,7 +21,7 @@ describe("elevenLabsFetch", () => {
   it("throws when ELEVENLABS_API_KEY is not set", async () => {
     delete process.env.ELEVENLABS_API_KEY;
     await expect(elevenLabsFetch("/voices")).rejects.toThrow(
-      "ELEVENLABS_API_KEY environment variable is not set"
+      "ELEVENLABS_API_KEY is not set"
     );
   });
 

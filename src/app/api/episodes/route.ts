@@ -114,6 +114,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Ensure profile exists (trigger may not have fired if email confirmation was enabled)
+  await supabase
+    .from("profiles")
+    .upsert({ id: user.id, display_name: user.user_metadata?.display_name ?? null }, { onConflict: "id", ignoreDuplicates: true });
+
   let body: unknown;
   try {
     body = await request.json();

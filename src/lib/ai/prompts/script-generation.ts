@@ -91,6 +91,8 @@ Rules:
 - Every segment must reference one of the provided voice_id values.
 - Generate a compelling title for the episode.
 - Stay faithful to the source material — do not fabricate facts.
+- IMPORTANT: Cover ALL topics mentioned in the summary. If the summary discusses multiple subjects, dedicate roughly equal time to each. Do not focus on only one topic.
+- IMPORTANT: You MUST hit the target word count of ~${targetWords} words. Count your output. The script should have at least ${Math.max(6, Math.ceil(targetWords / 80))} segments. A 5-minute episode needs ~750 words across all segments combined — do not stop short.
 - Always respond with valid JSON — no markdown fences, no commentary.
 
 Output format (JSON):

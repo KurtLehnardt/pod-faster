@@ -2,15 +2,10 @@ const BASE_URL = "https://api.elevenlabs.io/v1";
 
 let cachedApiKey: string | null = null;
 
-function getApiKey(): string {
+function getApiKey(): string | null {
   if (cachedApiKey) return cachedApiKey;
   const key = process.env.ELEVENLABS_API_KEY;
-  if (!key) {
-    throw new Error(
-      "ELEVENLABS_API_KEY environment variable is not set. " +
-        "Get your API key from https://elevenlabs.io/app/settings/api-keys"
-    );
-  }
+  if (!key) return null;
   cachedApiKey = key;
   return key;
 }
@@ -46,6 +41,12 @@ export async function elevenLabsFetch(
   maxRetries = 3
 ): Promise<Response> {
   const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new ElevenLabsError(
+      "ELEVENLABS_API_KEY is not set. Get your key from https://elevenlabs.io/app/settings/api-keys",
+      503
+    );
+  }
   const url = `${BASE_URL}${path}`;
 
   const headers: Record<string, string> = {

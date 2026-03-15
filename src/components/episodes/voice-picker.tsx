@@ -192,7 +192,7 @@ export function VoicePicker({ style, value, onChange }: VoicePickerProps) {
               {label}
             </span>
             <Select
-              value={assignment?.voice_id || undefined}
+              value={assignment?.voice_id ?? null}
               onValueChange={(val) => {
                 if (val) handleVoiceChange(role, val);
               }}

@@ -31,6 +31,7 @@ Rules:
 - Cite which source each key point comes from (by title).
 - Do not editorialize or add opinion.
 - Identify the most important headline across all articles.
+- IMPORTANT: If the articles span multiple distinct topics (e.g., world news, health, technology), cover ALL topics proportionally. Extract key points from every topic, not just the most prominent one. The topic overview should address each subject area.
 - Provide a high-level topic overview suitable for a podcast host to read before recording.
 - Always respond with valid JSON — no markdown fences, no commentary.
 

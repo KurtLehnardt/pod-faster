@@ -21,13 +21,15 @@ export default function SignupPage() {
     setLoading(true);
 
     const supabase = createClient();
-    const { error: signUpError } = await supabase.auth.signUp({
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://pod-faster.vercel.app";
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           display_name: displayName,
         },
+        emailRedirectTo: `${appUrl}/callback`,
       },
     });
 
@@ -37,14 +39,16 @@ export default function SignupPage() {
       return;
     }
 
-    // If email confirmation is required, show the confirmation message.
-    // Otherwise, redirect to /chat.
+    // If auto-confirm is enabled, the session is returned immediately
+    if (data.session) {
+      router.push("/chat");
+      router.refresh();
+      return;
+    }
+
+    // Otherwise email confirmation is required
     setCheckEmail(true);
     setLoading(false);
-
-    // Try to redirect in case auto-confirm is enabled
-    router.push("/chat");
-    router.refresh();
   }
 
   if (checkEmail) {

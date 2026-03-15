@@ -35,8 +35,8 @@ describe("searchStep", () => {
     expect(mockGatherNews).toHaveBeenCalledOnce();
     expect(mockGatherNews).toHaveBeenCalledWith({
       queries: ["artificial intelligence", "artificial intelligence latest news"],
-      maxResults: 5,
-      maxTotal: 10,
+      maxResults: 10,
+      maxTotal: 15,
       searchDepth: "basic",
       topic: "news",
     });
