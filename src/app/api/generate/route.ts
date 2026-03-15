@@ -4,14 +4,17 @@
  * POST /api/generate
  * Body: { episodeId: string }
  *
- * Returns immediately. The pipeline runs asynchronously in the background
- * using waitUntil() (Vercel) or a detached promise (local dev).
+ * Runs the pipeline synchronously so it works within Vercel's function
+ * timeout. Set maxDuration to allow enough time for the full pipeline.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import type { EpisodeStyle, EpisodeTone, VoiceConfig } from "@/types/episode";
 import { runPipeline } from "@/lib/pipeline/orchestrator";
+
+// Allow up to 300s on Vercel Pro, 60s on Hobby
+export const maxDuration = 300;
 
 interface GenerateBody {
   episodeId: string;
@@ -85,10 +88,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Launch pipeline in the background.
-  // On Vercel, waitUntil() keeps the serverless function alive after the
-  // response is sent. In local dev, we just fire-and-forget the promise.
-  const pipelinePromise = runPipeline({
+  // Run pipeline synchronously within the function timeout.
+  // The client polls episode status for progress updates.
+  await runPipeline({
     episodeId: episode.id,
     userId: user.id,
     topicQuery: episode.topic_query,
@@ -98,21 +100,8 @@ export async function POST(request: NextRequest) {
     voiceConfig,
   });
 
-  // Use waitUntil if available (Vercel runtime), otherwise fire-and-forget
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ctx = (globalThis as any).__nextWaitUntil;
-  if (typeof ctx === "function") {
-    ctx(pipelinePromise);
-  } else {
-    // Fire-and-forget — errors are caught inside runPipeline
-    pipelinePromise.catch((err) => {
-      console.error("[generate] Unhandled pipeline error:", err);
-    });
-  }
-
   return NextResponse.json({
     started: true,
     episodeId: episode.id,
-    status: "searching",
   });
 }
