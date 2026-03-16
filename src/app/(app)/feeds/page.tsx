@@ -35,7 +35,7 @@ export default function FeedsPage() {
     // Apply status filter
     switch (filter) {
       case "active":
-        result = result.filter((f) => f.is_active && !f.poll_error);
+        result = result.filter((f) => f.is_active);
         break;
       case "paused":
         result = result.filter((f) => !f.is_active);
