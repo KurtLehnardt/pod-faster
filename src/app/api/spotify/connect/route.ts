@@ -1,3 +1,5 @@
+// TODO: Add rate limiting to this endpoint (see T05 rate limiting task)
+
 /**
  * POST /api/spotify/connect — Initiate Spotify OAuth PKCE flow.
  *

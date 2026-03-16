@@ -1,3 +1,5 @@
+// TODO: Add rate limiting to this endpoint (see T05 rate limiting task)
+
 /**
  * POST /api/spotify/sync — Manually trigger a resync of Spotify subscriptions.
  *

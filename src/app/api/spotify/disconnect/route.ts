@@ -1,3 +1,5 @@
+// TODO: Add rate limiting to this endpoint (see T05 rate limiting task)
+
 /**
  * DELETE /api/spotify/disconnect — Disconnect Spotify account.
  *
