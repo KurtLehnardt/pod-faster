@@ -38,15 +38,21 @@ export interface OpmlFeed {
 
 const OPML_MAX_SIZE_BYTES = 1_048_576; // 1 MB
 
-// ── Custom rss-parser item fields for podcast:transcript ────
+// ── Custom rss-parser fields ─────────────────────────────────
 
-interface PodcastCustomItem {
-  "podcast:transcript"?: string | { $: { url?: string; type?: string } } | Array<{ $: { url?: string; type?: string } }>;
+interface PodcastCustomFeed {
+  subtitle?: string;
 }
 
-const rssParser = new RssParser<Record<string, never>, PodcastCustomItem>({
+interface PodcastCustomItem {
+  id?: string; // Atom <id> element (rss-parser uses `id` instead of `guid`)
+  "podcast:transcript"?: string | { $: { url?: string; type?: string } };
+}
+
+const rssParser = new RssParser<PodcastCustomFeed, PodcastCustomItem>({
   customFields: {
-    item: [["podcast:transcript", { keepArray: true }]],
+    feed: ["subtitle"],
+    item: ["podcast:transcript"],
   },
   timeout: 15_000,
 });
@@ -65,21 +71,13 @@ export async function parseFeed(feedUrl: string): Promise<ParsedFeed> {
 
   const feed = await rssParser.parseURL(feedUrl);
 
-  const episodes: ParsedEpisode[] = feed.items.map((item) => ({
-    guid: deriveGuid(item.guid, item.enclosure?.url, item.title),
-    title: item.title ?? "Untitled",
-    description: item.contentSnippet ?? item.content ?? item.summary ?? null,
-    audioUrl: item.enclosure?.url ?? null,
-    publishedAt: parseDate(item.isoDate ?? item.pubDate),
-    durationSeconds: parseDuration(
-      (item as Record<string, unknown>)["itunes:duration"] as string | undefined
-    ),
-    transcriptUrl: extractTranscriptUrl(item),
-  }));
+  const episodes: ParsedEpisode[] = feed.items.map((item) =>
+    mapItem(item)
+  );
 
   return {
     title: feed.title ?? "Untitled Feed",
-    description: feed.description ?? null,
+    description: feed.description ?? feed.subtitle ?? null,
     imageUrl: feed.image?.url ?? feed.itunes?.image ?? null,
     episodes,
   };
@@ -91,21 +89,13 @@ export async function parseFeed(feedUrl: string): Promise<ParsedFeed> {
 export async function parseFeedFromString(xml: string): Promise<ParsedFeed> {
   const feed = await rssParser.parseString(xml);
 
-  const episodes: ParsedEpisode[] = feed.items.map((item) => ({
-    guid: deriveGuid(item.guid, item.enclosure?.url, item.title),
-    title: item.title ?? "Untitled",
-    description: item.contentSnippet ?? item.content ?? item.summary ?? null,
-    audioUrl: item.enclosure?.url ?? null,
-    publishedAt: parseDate(item.isoDate ?? item.pubDate),
-    durationSeconds: parseDuration(
-      (item as Record<string, unknown>)["itunes:duration"] as string | undefined
-    ),
-    transcriptUrl: extractTranscriptUrl(item),
-  }));
+  const episodes: ParsedEpisode[] = feed.items.map((item) =>
+    mapItem(item)
+  );
 
   return {
     title: feed.title ?? "Untitled Feed",
-    description: feed.description ?? null,
+    description: feed.description ?? feed.subtitle ?? null,
     imageUrl: feed.image?.url ?? feed.itunes?.image ?? null,
     episodes,
   };
@@ -151,6 +141,25 @@ export async function parseOpml(opmlContent: string): Promise<OpmlFeed[]> {
 }
 
 // ── Internal helpers ─────────────────────────────────────────
+
+type FeedItem = PodcastCustomItem & RssParser.Item;
+
+/**
+ * Map a raw rss-parser item to a ParsedEpisode.
+ */
+function mapItem(item: FeedItem): ParsedEpisode {
+  return {
+    guid: deriveGuid(item.guid ?? item.id, item.enclosure?.url, item.title),
+    title: item.title ?? "Untitled",
+    description: item.contentSnippet ?? item.content ?? item.summary ?? null,
+    audioUrl: item.enclosure?.url ?? null,
+    publishedAt: parseDate(item.isoDate ?? item.pubDate),
+    durationSeconds: parseDuration(
+      (item as Record<string, unknown>)["itunes:duration"] as string | undefined
+    ),
+    transcriptUrl: extractTranscriptUrl(item),
+  };
+}
 
 /**
  * Derive a GUID from available data. Priority:
@@ -214,31 +223,21 @@ function parseDate(raw: string | undefined | null): Date | null {
 
 /**
  * Extract the podcast:transcript URL from a feed item.
- * The podcast:transcript tag may appear as a custom field.
+ * rss-parser returns the custom field as either:
+ * - A string (plain text content)
+ * - An object with `$` attribute containing `url` and `type`
  */
-function extractTranscriptUrl(
-  item: PodcastCustomItem & RssParser.Item
-): string | null {
+function extractTranscriptUrl(item: FeedItem): string | null {
   const transcript = item["podcast:transcript"];
   if (!transcript) return null;
 
-  // Array form (keepArray: true)
-  if (Array.isArray(transcript)) {
-    for (const entry of transcript) {
-      if (typeof entry === "object" && entry.$ && entry.$.url) {
-        return entry.$.url;
-      }
-    }
-    return null;
-  }
-
-  // Single object
+  // Object form with $ attributes: { $: { url: "...", type: "..." } }
   if (typeof transcript === "object" && "$" in transcript && transcript.$.url) {
     return transcript.$.url;
   }
 
-  // String form
-  if (typeof transcript === "string") {
+  // String form (plain text URL)
+  if (typeof transcript === "string" && transcript.startsWith("http")) {
     return transcript;
   }
 
