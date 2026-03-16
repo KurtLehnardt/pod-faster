@@ -206,7 +206,7 @@ export async function POST(request: NextRequest) {
   const episodeRows: FeedEpisodeInsert[] = [];
   for (const ep of parsedFeed.episodes) {
     let transcript: string | null = null;
-    let transcriptSource: "rss_description" | "podcast_index" | null = null;
+    let transcriptSource: "rss_description" | "rss_transcript" | "podcast_index" | null = null;
 
     try {
       const result = await extractTranscript({

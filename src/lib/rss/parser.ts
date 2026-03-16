@@ -7,7 +7,8 @@
  */
 
 import RssParser from "rss-parser";
-import { validateFeedUrl } from "./url-validator";
+import { parseStringPromise } from "xml2js";
+import { validateFeedUrl, validateResolvedUrl } from "./url-validator";
 import { createHash } from "crypto";
 
 // ── Public Types ──────────────────────────────────────────────
@@ -57,11 +58,52 @@ const rssParser = new RssParser<PodcastCustomFeed, PodcastCustomItem>({
   timeout: 15_000,
 });
 
+// ── SSRF-safe fetch with redirect validation ────────────────
+
+/**
+ * Fetch feed XML with SSRF protection.
+ * Follows redirects manually, validating each Location header
+ * against both syntactic checks and DNS resolution checks.
+ */
+async function fetchFeedXml(url: string, maxRedirects = 3): Promise<string> {
+  await validateResolvedUrl(url);
+  let currentUrl = url;
+
+  for (let i = 0; i < maxRedirects; i++) {
+    const response = await fetch(currentUrl, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location) throw new Error("Redirect without Location header");
+
+      const resolved = new URL(location, currentUrl).toString();
+      const redirectValidation = validateFeedUrl(resolved);
+      if (!redirectValidation.valid) {
+        throw new Error(`Redirect to invalid URL: ${redirectValidation.error}`);
+      }
+      await validateResolvedUrl(resolved);
+      currentUrl = resolved;
+      continue;
+    }
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.text();
+  }
+
+  throw new Error("Too many redirects");
+}
+
 // ── parseFeed ────────────────────────────────────────────────
 
 /**
  * Parse a single RSS/Atom feed URL and return feed metadata + episodes.
  * Throws on invalid/malformed XML or failed fetch.
+ *
+ * Uses manual fetch with SSRF-safe redirect handling instead of
+ * rssParser.parseURL() to prevent redirect-based SSRF attacks.
  */
 export async function parseFeed(feedUrl: string): Promise<ParsedFeed> {
   const validation = validateFeedUrl(feedUrl);
@@ -69,7 +111,8 @@ export async function parseFeed(feedUrl: string): Promise<ParsedFeed> {
     throw new Error(`Invalid feed URL: ${validation.error}`);
   }
 
-  const feed = await rssParser.parseURL(feedUrl);
+  const xml = await fetchFeedXml(feedUrl);
+  const feed = await rssParser.parseString(xml);
 
   const episodes: ParsedEpisode[] = feed.items.map((item) =>
     mapItem(item)
@@ -107,6 +150,8 @@ export async function parseFeedFromString(xml: string): Promise<ParsedFeed> {
  * Parse OPML content (XML string) into a flat list of feed URLs with titles.
  * Handles nested folder groups by recursively extracting <outline> elements.
  * Rejects OPML content exceeding 1 MB.
+ *
+ * Uses xml2js for proper XML parsing instead of fragile regex patterns.
  */
 export async function parseOpml(opmlContent: string): Promise<OpmlFeed[]> {
   if (opmlContent.length > OPML_MAX_SIZE_BYTES) {
@@ -115,26 +160,33 @@ export async function parseOpml(opmlContent: string): Promise<OpmlFeed[]> {
     );
   }
 
-  // Simple regex-based XML parsing for OPML outlines.
-  // OPML is a simple format: <outline> elements with xmlUrl attributes are feeds.
+  const result = await parseStringPromise(opmlContent);
   const feeds: OpmlFeed[] = [];
-  const outlineRegex = /<outline\s[^>]*>/gi;
-  let match: RegExpExecArray | null;
 
-  while ((match = outlineRegex.exec(opmlContent)) !== null) {
-    const tag = match[0];
-    const xmlUrl = extractAttribute(tag, "xmlUrl") ?? extractAttribute(tag, "xmlurl");
-    if (!xmlUrl) continue; // This is a folder, not a feed
+  function walkOutlines(outlines: Record<string, unknown>[]): void {
+    for (const outline of outlines) {
+      const attrs = (outline as Record<string, Record<string, string>>).$ ?? {};
+      const xmlUrl = attrs.xmlUrl ?? attrs.xmlurl;
 
-    const validation = validateFeedUrl(xmlUrl);
-    if (!validation.valid) continue; // Skip invalid URLs silently
+      if (xmlUrl) {
+        const validation = validateFeedUrl(xmlUrl);
+        if (!validation.valid) continue; // Skip invalid URLs silently
 
-    const title =
-      extractAttribute(tag, "text") ??
-      extractAttribute(tag, "title") ??
-      null;
+        const title = attrs.title ?? attrs.text ?? null;
+        feeds.push({ title, feedUrl: xmlUrl });
+      }
 
-    feeds.push({ title, feedUrl: xmlUrl });
+      // Recurse into nested outlines (folders)
+      const children = (outline as Record<string, unknown>).outline;
+      if (Array.isArray(children)) {
+        walkOutlines(children as Record<string, unknown>[]);
+      }
+    }
+  }
+
+  const body = result?.opml?.body?.[0];
+  if (body?.outline) {
+    walkOutlines(body.outline as Record<string, unknown>[]);
   }
 
   return feeds;
@@ -244,22 +296,3 @@ function extractTranscriptUrl(item: FeedItem): string | null {
   return null;
 }
 
-/**
- * Extract an XML attribute value from a tag string.
- * Handles both single and double quotes.
- */
-function extractAttribute(tag: string, name: string): string | undefined {
-  // Case-insensitive attribute matching
-  const regex = new RegExp(`${name}\\s*=\\s*["']([^"']*)["']`, "i");
-  const match = regex.exec(tag);
-  return match?.[1] ? decodeXmlEntities(match[1]) : undefined;
-}
-
-function decodeXmlEntities(str: string): string {
-  return str
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
-}

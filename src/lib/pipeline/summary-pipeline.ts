@@ -5,8 +5,8 @@
  * Steps:
  *   1. GATHER     — query feed_episodes for included feeds since last generation
  *   2. INACTIVITY — auto-exclude feeds with no new episodes
- *   3. SUMMARIZE  — Claude synthesizes podcast transcripts
- *   4. CREATE     — insert episode row with source_type='feed_summary'
+ *   3. CREATE     — insert episode row with source_type='feed_summary'
+ *   4. SUMMARIZE  — Claude synthesizes podcast transcripts
  *   5. SCRIPT     — generate podcast script from summary
  *   6. AUDIO      — convert script to audio via ElevenLabs
  *   7. UPLOAD     — store audio in Supabase Storage
@@ -15,6 +15,9 @@
  *
  * Follows the same error-handling pattern as orchestrator.ts:
  * catches all errors, sets episode status to 'failed', logs to generation log.
+ *
+ * A single admin Supabase client is created in runSummaryPipeline() and
+ * injected into all helper functions to avoid redundant client construction.
  */
 
 import type {
@@ -25,6 +28,7 @@ import type {
 } from "@/types/episode";
 import type { Cadence, SummaryConfig, FeedEpisode } from "@/types/feed";
 import type { NewsSummaryOutput } from "@/lib/ai/prompts/news-summary";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { completeJson, MODEL_SONNET } from "@/lib/ai/chat";
 import {
@@ -76,13 +80,13 @@ interface PipelineMetrics {
 
 /**
  * Update the episode row in the database.
- * Uses admin client to bypass RLS (pipeline runs server-side).
+ * Accepts the shared admin client to avoid redundant construction.
  */
 async function updateEpisode(
+  supabase: SupabaseClient,
   episodeId: string,
   data: Record<string, unknown>,
 ): Promise<void> {
-  const supabase = createAdminClient();
   const { error } = await supabase
     .from("episodes")
     .update(data)
@@ -100,23 +104,25 @@ async function updateEpisode(
  * Set the episode status and optionally include extra fields.
  */
 async function setStatus(
+  supabase: SupabaseClient,
   episodeId: string,
   status: EpisodeStatus,
   extra?: Record<string, unknown>,
 ): Promise<void> {
-  await updateEpisode(episodeId, { status, ...extra });
+  await updateEpisode(supabase, episodeId, { status, ...extra });
 }
 
 /**
  * Mark the episode as failed with an error message.
  */
 async function failEpisode(
+  supabase: SupabaseClient,
   episodeId: string,
   error: unknown,
 ): Promise<void> {
   const message =
     error instanceof Error ? error.message : String(error);
-  await setStatus(episodeId, "failed", {
+  await setStatus(supabase, episodeId, "failed", {
     error_message: message.slice(0, 1000),
   });
 }
@@ -186,6 +192,7 @@ export function windowTranscripts(
 // ── Step 1: GATHER ───────────────────────────────────────────
 
 async function gatherEpisodes(
+  supabase: SupabaseClient,
   summaryConfigId: string,
   lastGeneratedAt: string | null,
 ): Promise<{
@@ -193,8 +200,6 @@ async function gatherEpisodes(
   feedIds: string[];
   excludedFeedIds: string[];
 }> {
-  const supabase = createAdminClient();
-
   // Get included feeds for this config
   const { data: configFeeds, error: cfError } = await supabase
     .from("summary_config_feeds")
@@ -281,12 +286,11 @@ async function gatherEpisodes(
 // ── Step 2: INACTIVITY CHECK ─────────────────────────────────
 
 async function autoExcludeInactiveFeeds(
+  supabase: SupabaseClient,
   summaryConfigId: string,
   inactiveFeedIds: string[],
 ): Promise<void> {
   if (inactiveFeedIds.length === 0) return;
-
-  const supabase = createAdminClient();
 
   for (const feedId of inactiveFeedIds) {
     const { error } = await supabase
@@ -308,7 +312,7 @@ async function autoExcludeInactiveFeeds(
   }
 }
 
-// ── Step 3: SUMMARIZE ────────────────────────────────────────
+// ── Step 4: SUMMARIZE ────────────────────────────────────────
 
 async function summarizeTranscripts(
   episodes: GatheredEpisode[],
@@ -342,6 +346,7 @@ async function summarizeTranscripts(
 // ── Step 8: LOG ──────────────────────────────────────────────
 
 async function writeGenerationLog(
+  supabase: SupabaseClient,
   summaryConfigId: string,
   userId: string,
   episodeId: string | null,
@@ -349,8 +354,6 @@ async function writeGenerationLog(
   metrics: PipelineMetrics,
   errorMessage?: string,
 ): Promise<void> {
-  const supabase = createAdminClient();
-
   const { error } = await supabase.from("summary_generation_log").insert({
     summary_config_id: summaryConfigId,
     user_id: userId,
@@ -377,10 +380,10 @@ async function writeGenerationLog(
 // ── Step 9: UPDATE CONFIG ────────────────────────────────────
 
 async function updateSummaryConfig(
+  supabase: SupabaseClient,
   summaryConfigId: string,
   cadence: Cadence,
 ): Promise<void> {
-  const supabase = createAdminClient();
   const now = new Date();
 
   const { error } = await supabase
@@ -410,6 +413,9 @@ async function updateSummaryConfig(
  *
  * On any error, the episode status is set to 'failed' with the error message,
  * and the function returns without throwing.
+ *
+ * Creates a single admin Supabase client and passes it to all step functions,
+ * avoiding redundant client construction.
  */
 export async function runSummaryPipeline(
   params: SummaryPipelineParams,
@@ -423,6 +429,7 @@ export async function runSummaryPipeline(
     voiceConfig,
   } = params;
 
+  // Create a single admin client for the entire pipeline run
   const supabase = createAdminClient();
   let episodeId: string | null = null;
   let totalTokens = 0;
@@ -453,13 +460,13 @@ export async function runSummaryPipeline(
 
     // ---- Step 1: GATHER ----
     const { episodes: gathered, feedIds, excludedFeedIds } =
-      await gatherEpisodes(summaryConfigId, typedConfig.last_generated_at);
+      await gatherEpisodes(supabase, summaryConfigId, typedConfig.last_generated_at);
 
     metrics.feedsIncluded = feedIds.length - excludedFeedIds.length;
     metrics.feedsExcluded = excludedFeedIds.length;
 
     // ---- Step 2: INACTIVITY CHECK ----
-    await autoExcludeInactiveFeeds(summaryConfigId, excludedFeedIds);
+    await autoExcludeInactiveFeeds(supabase, summaryConfigId, excludedFeedIds);
 
     // After inactivity check, verify we still have transcripts
     if (gathered.length === 0) {
@@ -470,7 +477,7 @@ export async function runSummaryPipeline(
     const windowed = windowTranscripts(gathered);
     metrics.episodesSummarized = windowed.length;
 
-    // ---- Step 4: CREATE EPISODE ----
+    // ---- Step 3: CREATE EPISODE ----
     // Create the episode row early so we can track status
     const configName = typedConfig.name ?? "Summary";
     const { data: newEpisode, error: insertError } = await supabase
@@ -507,18 +514,18 @@ export async function runSummaryPipeline(
 
     episodeId = newEpisode.id;
 
-    // ---- Step 3: SUMMARIZE ----
-    await setStatus(episodeId, "summarizing");
+    // ---- Step 4: SUMMARIZE ----
+    await setStatus(supabase, episodeId, "summarizing");
     const { summary, tokensUsed: summaryTokens } =
       await summarizeTranscripts(windowed, lengthMinutes);
     totalTokens += summaryTokens;
-    await updateEpisode(episodeId, {
+    await updateEpisode(supabase, episodeId, {
       summary: summary.topicOverview,
       claude_tokens_used: totalTokens,
     });
 
     // ---- Step 5: SCRIPT ----
-    await setStatus(episodeId, "scripting");
+    await setStatus(supabase, episodeId, "scripting");
     const { script, tokensUsed: scriptTokens } = await scriptStep({
       summary,
       style,
@@ -527,24 +534,24 @@ export async function runSummaryPipeline(
       voiceConfig,
     });
     totalTokens += scriptTokens;
-    await updateEpisode(episodeId, {
+    await updateEpisode(supabase, episodeId, {
       title: script.title,
       script: JSON.parse(JSON.stringify(script)),
       claude_tokens_used: totalTokens,
     });
 
     // ---- Step 6: AUDIO ----
-    await setStatus(episodeId, "generating_audio");
+    await setStatus(supabase, episodeId, "generating_audio");
     const { audio, charactersUsed } = await audioStep({
       script,
       style,
     });
-    await updateEpisode(episodeId, {
+    await updateEpisode(supabase, episodeId, {
       elevenlabs_characters_used: charactersUsed,
     });
 
     // ---- Step 7: UPLOAD ----
-    await setStatus(episodeId, "uploading");
+    await setStatus(supabase, episodeId, "uploading");
     const audioPath = await storageStep({
       audio,
       userId,
@@ -552,7 +559,7 @@ export async function runSummaryPipeline(
     });
 
     // ---- DONE ----
-    await setStatus(episodeId, "completed", {
+    await setStatus(supabase, episodeId, "completed", {
       audio_path: audioPath,
       completed_at: new Date().toISOString(),
     });
@@ -561,6 +568,7 @@ export async function runSummaryPipeline(
     metrics.claudeTokensUsed = totalTokens;
     metrics.elevenlabsCharactersUsed = charactersUsed;
     await writeGenerationLog(
+      supabase,
       summaryConfigId,
       userId,
       episodeId,
@@ -570,6 +578,7 @@ export async function runSummaryPipeline(
 
     // ---- Step 9: UPDATE CONFIG ----
     await updateSummaryConfig(
+      supabase,
       summaryConfigId,
       typedConfig.cadence as Cadence,
     );
@@ -580,7 +589,7 @@ export async function runSummaryPipeline(
     );
 
     if (episodeId) {
-      await failEpisode(episodeId, error);
+      await failEpisode(supabase, episodeId, error);
     }
 
     const errorMessage =
@@ -588,6 +597,7 @@ export async function runSummaryPipeline(
 
     metrics.claudeTokensUsed = totalTokens;
     await writeGenerationLog(
+      supabase,
       summaryConfigId,
       userId,
       episodeId,
