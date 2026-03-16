@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Science Weekly</title>
+  <subtitle>Weekly science news and discoveries.</subtitle>
+  <link href="https://scienceweekly.example.com"/>
+  <id>urn:uuid:science-weekly-feed</id>
+  <updated>2026-03-14T12:00:00Z</updated>
+  <entry>
+    <title>Dark Matter Breakthrough</title>
+    <id>atom-entry-001</id>
+    <summary>New evidence for dark matter interactions.</summary>
+    <link rel="enclosure" href="https://cdn.example.com/science001.mp3" type="audio/mpeg" length="25000000"/>
+    <published>2026-03-14T12:00:00Z</published>
+    <updated>2026-03-14T12:00:00Z</updated>
+  </entry>
+  <entry>
+    <title>CRISPR Gene Therapy Results</title>
+    <id>atom-entry-002</id>
+    <summary>Latest clinical trial results for CRISPR-based therapies.</summary>
+    <link rel="enclosure" href="https://cdn.example.com/science002.mp3" type="audio/mpeg" length="30000000"/>
+    <published>2026-03-07T12:00:00Z</published>
+    <updated>2026-03-07T12:00:00Z</updated>
+  </entry>
+  <entry>
+    <title>Mars Sample Return Update</title>
+    <id>atom-entry-003</id>
+    <summary>Progress on the Mars sample return mission.</summary>
+    <link rel="enclosure" href="https://cdn.example.com/science003.mp3" type="audio/mpeg" length="20000000"/>
+    <published>2026-02-28T12:00:00Z</published>
+    <updated>2026-02-28T12:00:00Z</updated>
+  </entry>
+</feed>
