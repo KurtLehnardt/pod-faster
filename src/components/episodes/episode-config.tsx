@@ -218,7 +218,13 @@ export function EpisodeConfig({
       // Build the topic query based on source mode
       let effectiveTopic: string;
       if (sourceMode === "feeds") {
-        effectiveTopic = "Summary of my latest podcast feeds";
+        const selectedTitles = activeFeeds
+          .filter((f) => selectedFeedIds.has(f.id))
+          .map((f) => f.title || f.feed_url);
+        effectiveTopic =
+          selectedTitles.length > 0
+            ? `Summary of: ${selectedTitles.join(", ")}`
+            : "Summary of my latest podcast feeds";
       } else if (sourceMode === "topics") {
         const selectedNames = availableTopics
           .filter((t) => includedTopicIds.has(t.id))
@@ -289,7 +295,7 @@ export function EpisodeConfig({
     } finally {
       setIsSubmitting(false);
     }
-  }, [isFormValid, isSubmitting, sourceMode, topic, selectedFeedIds, availableTopics, includedTopicIds, excludedTopicIds, style, tone, lengthMinutes, voiceAssignments]);
+  }, [isFormValid, isSubmitting, sourceMode, topic, selectedFeedIds, activeFeeds, availableTopics, includedTopicIds, excludedTopicIds, style, tone, lengthMinutes, voiceAssignments]);
 
   const handleReset = useCallback(() => {
     setGeneratingEpisodeId(null);
