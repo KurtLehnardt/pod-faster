@@ -107,19 +107,3 @@ export function parsePodcastSummaryResponse(raw: string): NewsSummaryOutput {
   };
 }
 
-/**
- * Build the podcast summary prompt pair (system + user).
- * Convenience wrapper matching the task specification signature.
- */
-export function buildPodcastSummaryPrompt(params: {
-  transcripts: PodcastTranscript[];
-  targetLengthMinutes: number;
-}): { system: string; user: string } {
-  return {
-    system: podcastSummarySystemPrompt(),
-    user: podcastSummaryUserPrompt({
-      transcripts: params.transcripts,
-      targetLengthMinutes: params.targetLengthMinutes,
-    }),
-  };
-}

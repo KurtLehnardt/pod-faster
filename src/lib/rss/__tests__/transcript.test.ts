@@ -39,7 +39,7 @@ describe("extractTranscript", () => {
     expect(result.transcript).toBe(
       "Hello, welcome to the show. Today we discuss..."
     );
-    expect(result.source).toBe("rss_description");
+    expect(result.source).toBe("rss_transcript");
     expect(result.truncated).toBe(false);
   });
 
@@ -67,7 +67,7 @@ Today we discuss AI.`;
     expect(result.transcript).toBe(
       "Welcome to the show. Today we discuss AI."
     );
-    expect(result.source).toBe("rss_description");
+    expect(result.source).toBe("rss_transcript");
   });
 
   it("extracts and cleans VTT format transcript", async () => {
@@ -233,7 +233,7 @@ Let us begin.`;
 
     expect(result.truncated).toBe(true);
     expect(result.transcript).toHaveLength(512_000);
-    expect(result.source).toBe("rss_description");
+    expect(result.source).toBe("rss_transcript");
   });
 
   // ── Validation of transcript URL ───────────────────────────

@@ -66,7 +66,9 @@ export const createSummaryConfigSchema = z.object({
   feedIds: z.array(z.string().uuid()).min(1),
 });
 
-export const updateSummaryConfigSchema = createSummaryConfigSchema.partial();
+export const updateSummaryConfigSchema = createSummaryConfigSchema.partial().extend({
+  is_active: z.boolean().optional(),
+});
 
 // ── Transcription ────────────────────────────────────────────
 

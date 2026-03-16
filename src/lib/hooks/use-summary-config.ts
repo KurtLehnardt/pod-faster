@@ -66,9 +66,21 @@ export function useSummaryConfig(id: string) {
       })
       .then((data) => {
         if (!cancelled) {
-          setConfig(data.config ?? null);
-          setFeedIds(data.feedIds ?? []);
-          setHistory(data.history ?? []);
+          const rawConfig = data.config ?? null;
+          // The API returns { config: { ...config, feeds: [...], generationHistory: [...] } }
+          // Extract nested feeds and generationHistory from the config object
+          if (rawConfig) {
+            const { feeds, generationHistory, ...configFields } = rawConfig;
+            setConfig(configFields);
+            setFeedIds(
+              (feeds ?? []).map((f: { feed_id: string }) => f.feed_id),
+            );
+            setHistory(generationHistory ?? []);
+          } else {
+            setConfig(null);
+            setFeedIds([]);
+            setHistory([]);
+          }
           setError(null);
         }
       })
