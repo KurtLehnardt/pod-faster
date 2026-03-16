@@ -29,7 +29,7 @@ COMMENT ON TABLE public.podcast_feeds IS 'RSS feed subscriptions tracked per use
 CREATE TABLE public.feed_episodes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   feed_id UUID NOT NULL REFERENCES public.podcast_feeds(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL,
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   guid TEXT NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
