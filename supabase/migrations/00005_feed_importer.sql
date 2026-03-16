@@ -37,7 +37,7 @@ CREATE TABLE public.feed_episodes (
   published_at TIMESTAMPTZ,
   duration_seconds INTEGER,
   transcript TEXT,
-  transcript_source TEXT CHECK (transcript_source IN ('rss_description', 'podcast_index', 'elevenlabs_stt', 'manual')),
+  transcript_source TEXT CHECK (transcript_source IN ('rss_description', 'rss_transcript', 'podcast_index', 'elevenlabs_stt', 'manual')),
   transcription_status TEXT DEFAULT 'none' CHECK (transcription_status IN ('none', 'pending', 'processing', 'completed', 'failed')),
   transcription_error TEXT,
   elevenlabs_cost_cents INTEGER DEFAULT 0,
@@ -46,6 +46,10 @@ CREATE TABLE public.feed_episodes (
 );
 
 COMMENT ON TABLE public.feed_episodes IS 'Individual episodes discovered from RSS feeds, with transcription state tracking.';
+
+-- Guard against unbounded transcript storage (512 KB limit)
+ALTER TABLE public.feed_episodes
+  ADD CONSTRAINT chk_transcript_length CHECK (octet_length(transcript) <= 524288);
 
 -- summary_configs: user preferences for auto-generated summary podcasts
 CREATE TABLE public.summary_configs (
@@ -209,6 +213,8 @@ CREATE POLICY "Users can delete their own summary config feeds"
   ));
 
 -- summary_generation_log (SELECT only for users; insert/update via admin client)
+-- INSERT/UPDATE/DELETE restricted to service_role (bypasses RLS).
+-- No user-facing write policies needed.
 ALTER TABLE public.summary_generation_log ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can view their own generation logs"
@@ -228,13 +234,34 @@ CREATE INDEX idx_feed_episodes_feed_id ON public.feed_episodes (feed_id);
 CREATE INDEX idx_feed_episodes_user_id ON public.feed_episodes (user_id);
 CREATE INDEX idx_feed_episodes_feed_published ON public.feed_episodes (feed_id, published_at DESC);
 CREATE INDEX idx_feed_episodes_transcription ON public.feed_episodes (transcription_status) WHERE transcription_status IN ('pending', 'processing');
+-- Composite index for STT budget check (user_id + transcript_source + created_at)
+CREATE INDEX idx_feed_episodes_stt_budget
+  ON public.feed_episodes (user_id, transcript_source, created_at DESC)
+  WHERE transcript_source = 'elevenlabs_stt';
 
 -- summary_configs
 CREATE INDEX idx_summary_configs_user_id ON public.summary_configs (user_id);
+-- Composite index to accelerate RLS correlated subqueries on summary_config_feeds
+CREATE INDEX idx_summary_configs_id_user ON public.summary_configs (id, user_id);
 CREATE INDEX idx_summary_configs_next_due ON public.summary_configs (next_due_at) WHERE is_active = true;
 
 -- summary_generation_log
 CREATE INDEX idx_summary_gen_log_config_started ON public.summary_generation_log (summary_config_id, started_at DESC);
+
+-- ============================================================
+-- RPC FUNCTIONS
+-- ============================================================
+
+-- Grouped episode counts to replace N+1 JS counting
+CREATE OR REPLACE FUNCTION public.feed_episode_counts(p_feed_ids uuid[])
+RETURNS TABLE(feed_id uuid, episode_count bigint)
+LANGUAGE sql STABLE SECURITY DEFINER
+AS $$
+  SELECT fe.feed_id, count(*)
+  FROM public.feed_episodes fe
+  WHERE fe.feed_id = ANY(p_feed_ids)
+  GROUP BY fe.feed_id;
+$$;
 
 -- ============================================================
 -- TRIGGERS (reuse existing handle_updated_at function)
@@ -242,8 +269,8 @@ CREATE INDEX idx_summary_gen_log_config_started ON public.summary_generation_log
 
 CREATE TRIGGER on_podcast_feeds_updated
   BEFORE UPDATE ON public.podcast_feeds
-  FOR EACH ROW EXECUTE PROCEDURE public.handle_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
 CREATE TRIGGER on_summary_configs_updated
   BEFORE UPDATE ON public.summary_configs
-  FOR EACH ROW EXECUTE PROCEDURE public.handle_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();

@@ -3,38 +3,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createChain } from "@/__tests__/helpers/mock-supabase";
 
 // ── Mock Supabase ──────────────────────────────────────────────────────────
 
 const mockGetUser = vi.fn();
-
-/**
- * Creates an isolated Supabase query-builder chain where every method
- * returns the same chain object by default. Each chain has its OWN set of
- * vi.fn() instances so separate chains never interfere with each other.
- */
-function createChain() {
-  const chain: Record<string, ReturnType<typeof vi.fn>> = {};
-  const methods = [
-    "select",
-    "insert",
-    "update",
-    "delete",
-    "eq",
-    "in",
-    "order",
-    "limit",
-    "single",
-    "maybeSingle",
-  ];
-
-  for (const m of methods) {
-    chain[m] = vi.fn().mockReturnValue(chain);
-  }
-
-  return chain;
-}
-
 const mockFrom = vi.fn(() => createChain());
 
 vi.mock("@/lib/supabase/server", () => ({

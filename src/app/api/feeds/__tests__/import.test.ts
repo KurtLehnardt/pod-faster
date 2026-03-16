@@ -3,30 +3,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createChain } from "@/__tests__/helpers/mock-supabase";
 
 // ── Mock Supabase ──────────────────────────────────────────────────────────
 
-const mockSingle = vi.fn();
-const mockSelect = vi.fn();
-const mockInsert = vi.fn();
-const mockEq = vi.fn();
 const mockGetUser = vi.fn();
-
-function createChain() {
-  const chain: Record<string, ReturnType<typeof vi.fn>> = {
-    select: mockSelect,
-    insert: mockInsert,
-    eq: mockEq,
-    single: mockSingle,
-  };
-
-  for (const fn of Object.values(chain)) {
-    fn.mockReturnValue(chain);
-  }
-
-  return chain;
-}
-
 const mockFrom = vi.fn(() => createChain());
 
 vi.mock("@/lib/supabase/server", () => ({
