@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { FeedEpisodeList } from "@/components/feeds/feed-episode-list";
 import { useFeed, usePollFeed, useDeleteFeed, useUpdateFeed } from "@/lib/hooks/use-feeds";
+import { stripHtml } from "@/lib/utils/strip-html";
 
 export default function FeedDetailPage({
   params,
@@ -95,9 +96,16 @@ export default function FeedDetailPage({
         <div className="flex-1 space-y-1">
           <h1 className="text-xl font-bold">{feed.title || feed.feed_url}</h1>
           {feed.description && (
-            <p className="text-sm text-muted-foreground line-clamp-2">{feed.description}</p>
+            <p className="text-sm text-muted-foreground line-clamp-2">{stripHtml(feed.description)}</p>
           )}
-          <p className="text-xs text-muted-foreground">{feed.feed_url}</p>
+          <a
+            href={feed.feed_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-primary hover:underline"
+          >
+            {feed.feed_url}
+          </a>
         </div>
       </div>
 
