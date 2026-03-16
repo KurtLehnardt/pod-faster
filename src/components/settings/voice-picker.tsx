@@ -115,11 +115,19 @@ export function VoicePicker({ value, onChange }: VoicePickerProps) {
             <div className="flex w-full items-center justify-between">
               <span className="font-medium truncate">{voice.name}</span>
               {voice.preview_url && (
-                <button
-                  type="button"
+                <span
+                  role="button"
+                  tabIndex={0}
                   onClick={(e) => {
                     e.stopPropagation();
                     handlePreview(voice);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handlePreview(voice);
+                    }
                   }}
                   className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
                   aria-label={playing ? "Stop preview" : "Play preview"}
@@ -129,7 +137,7 @@ export function VoicePicker({ value, onChange }: VoicePickerProps) {
                   ) : (
                     <Play className="size-3.5" />
                   )}
-                </button>
+                </span>
               )}
             </div>
             <span className="text-xs text-muted-foreground truncate w-full">

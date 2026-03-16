@@ -27,10 +27,12 @@ export async function GET() {
     const status = await getConnectionStatus(user.id);
     return NextResponse.json(status);
   } catch (err) {
-    console.error(
-      "Failed to get Spotify status:",
-      err instanceof Error ? err.message : "Unknown error"
-    );
+    const message = err instanceof Error ? err.message : "Unknown error";
+    // Gracefully handle missing tables (migration not yet applied)
+    if (message.includes("does not exist") || message.includes("relation")) {
+      return NextResponse.json({ connected: false });
+    }
+    console.error("Failed to get Spotify status:", message);
     return NextResponse.json(
       { error: "Failed to get connection status" },
       { status: 500 }
