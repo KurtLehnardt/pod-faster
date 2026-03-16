@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Broken Feed</title>
+    <description>This feed has malformed XML.
+    <item>
+      <title>Episode 1</title>
+      <guid>broken-001</guid>
+      <description>Missing closing tags everywhere.
+      <enclosure url="https://cdn.example.com/broken.mp3" type="audio/mpeg"
+    </item>
+    <item>
+      <title>Episode 2
+      <guid>broken-002
+    </item>
+  </channel>
