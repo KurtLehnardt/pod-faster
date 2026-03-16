@@ -1,3 +1,5 @@
+export type EpisodeSourceType = "topic" | "feed_summary";
+
 export type EpisodeStyle = "monologue" | "interview" | "group_chat";
 export type EpisodeTone =
   | "serious"
