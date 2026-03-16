@@ -17,7 +17,7 @@ import { storeTokens } from "@/lib/spotify/tokens";
 import { syncSubscriptions } from "@/lib/spotify/sync";
 
 export async function GET(request: NextRequest) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
 
   // 1. Auth check
   const supabase = await createClient();
