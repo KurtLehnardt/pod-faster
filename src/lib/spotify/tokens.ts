@@ -15,6 +15,13 @@ import type {
 /** Refresh tokens that expire within this window (ms). */
 const REFRESH_BUFFER_MS = 5 * 60 * 1000; // 5 minutes
 
+/**
+ * Per-user mutex for token refresh.
+ * Prevents concurrent refresh requests for the same user — if a refresh
+ * is already in-flight, subsequent callers wait for the same promise.
+ */
+const refreshLocks = new Map<string, Promise<string | null>>();
+
 // ---------------------------------------------------------------------------
 // storeTokens
 // ---------------------------------------------------------------------------
@@ -97,6 +104,9 @@ export async function getTokens(
 /**
  * Get a valid access token, refreshing if needed.
  * Returns null if the user is not connected or the refresh token has been revoked.
+ *
+ * Uses a per-user mutex so that concurrent calls for the same user share a
+ * single refresh request rather than triggering parallel refreshes.
  */
 export async function getValidAccessToken(
   userId: string
@@ -114,9 +124,33 @@ export async function getValidAccessToken(
     return tokens.access_token;
   }
 
-  // Token expired or expiring soon — refresh
+  // If a refresh is already in-flight for this user, wait for it
+  const existing = refreshLocks.get(userId);
+  if (existing) {
+    return existing;
+  }
+
+  // Token expired or expiring soon — refresh (with mutex)
+  const refreshPromise = performTokenRefresh(userId, tokens.refresh_token);
+  refreshLocks.set(userId, refreshPromise);
+
   try {
-    const refreshed = await refreshAccessToken(tokens.refresh_token);
+    return await refreshPromise;
+  } finally {
+    refreshLocks.delete(userId);
+  }
+}
+
+/**
+ * Internal: performs the actual token refresh and DB update.
+ * Callers should use getValidAccessToken which handles the mutex.
+ */
+async function performTokenRefresh(
+  userId: string,
+  currentRefreshToken: string
+): Promise<string | null> {
+  try {
+    const refreshed = await refreshAccessToken(currentRefreshToken);
 
     const supabase = createAdminClient();
     const newExpiresAt = new Date(
@@ -128,7 +162,7 @@ export async function getValidAccessToken(
       .update({
         encrypted_access_token: encryptToken(refreshed.access_token),
         encrypted_refresh_token: encryptToken(
-          refreshed.refresh_token ?? tokens.refresh_token
+          refreshed.refresh_token ?? currentRefreshToken
         ),
         expires_at: newExpiresAt,
       })
