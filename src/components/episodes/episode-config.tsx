@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { Mic, Users, MessageSquare, Loader2, Rss, Check } from "lucide-react";
+import { useState, useCallback, useEffect } from "react";
+import { Mic, Users, MessageSquare, Loader2, Rss, Check, Tag, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +18,13 @@ import {
 import { VoicePicker, type VoiceAssignment } from "./voice-picker";
 import { GenerationProgress } from "./generation-progress";
 import { useFeeds } from "@/lib/hooks/use-feeds";
+import { createClient } from "@/lib/supabase/client";
 import type { EpisodeStyle, EpisodeTone } from "@/types/episode";
+
+interface TopicItem {
+  id: string;
+  name: string;
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -72,7 +78,7 @@ interface EpisodeConfigProps {
   onOpenChange?: (open: boolean) => void;
 }
 
-type SourceMode = "topic" | "feeds";
+type SourceMode = "topic" | "feeds" | "topics";
 
 export function EpisodeConfig({
   initialTopic = "",
@@ -98,6 +104,34 @@ export function EpisodeConfig({
   );
   const { feeds } = useFeeds();
   const activeFeeds = feeds.filter((f) => f.is_active);
+
+  // Topic selection state (BUG-012 + BUG-013)
+  const [availableTopics, setAvailableTopics] = useState<TopicItem[]>([]);
+  const [includedTopicIds, setIncludedTopicIds] = useState<Set<string>>(
+    new Set()
+  );
+  const [excludedTopicIds, setExcludedTopicIds] = useState<Set<string>>(
+    new Set()
+  );
+
+  // Fetch topics when dialog opens in topics mode
+  useEffect(() => {
+    if (controlledOpen && sourceMode === "topics" && availableTopics.length === 0) {
+      const supabase = createClient();
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (!user) return;
+        supabase
+          .from("topics")
+          .select("id, name")
+          .eq("user_id", user.id)
+          .eq("is_active", true)
+          .order("name")
+          .then(({ data }) => {
+            if (data) setAvailableTopics(data as TopicItem[]);
+          });
+      });
+    }
+  }, [controlledOpen, sourceMode, availableTopics.length]);
 
   // Generation state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -125,16 +159,54 @@ export function EpisodeConfig({
     });
   }
 
+  function toggleIncludeTopic(topicId: string) {
+    setIncludedTopicIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(topicId)) {
+        next.delete(topicId);
+      } else {
+        next.add(topicId);
+        // Remove from excluded if it was there
+        setExcludedTopicIds((ex) => {
+          const n = new Set(ex);
+          n.delete(topicId);
+          return n;
+        });
+      }
+      return next;
+    });
+  }
+
+  function toggleExcludeTopic(topicId: string) {
+    setExcludedTopicIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(topicId)) {
+        next.delete(topicId);
+      } else {
+        next.add(topicId);
+        // Remove from included if it was there
+        setIncludedTopicIds((inc) => {
+          const n = new Set(inc);
+          n.delete(topicId);
+          return n;
+        });
+      }
+      return next;
+    });
+  }
+
   const isGenerating = generatingEpisodeId !== null;
+
+  const hasVoices =
+    voiceAssignments.length > 0 &&
+    voiceAssignments.every((a) => a.voice_id);
 
   const isFormValid =
     sourceMode === "topic"
-      ? topic.trim().length > 0 &&
-        voiceAssignments.length > 0 &&
-        voiceAssignments.every((a) => a.voice_id)
-      : selectedFeedIds.size > 0 &&
-        voiceAssignments.length > 0 &&
-        voiceAssignments.every((a) => a.voice_id);
+      ? topic.trim().length > 0 && hasVoices
+      : sourceMode === "feeds"
+        ? selectedFeedIds.size > 0 && hasVoices
+        : includedTopicIds.size > 0 && hasVoices;
 
   const handleGenerate = useCallback(async () => {
     if (!isFormValid || isSubmitting) return;
@@ -144,10 +216,24 @@ export function EpisodeConfig({
 
     try {
       // Build the topic query based on source mode
-      const effectiveTopic =
-        sourceMode === "feeds"
-          ? "Summary of my latest podcast feeds"
-          : topic.trim();
+      let effectiveTopic: string;
+      if (sourceMode === "feeds") {
+        effectiveTopic = "Summary of my latest podcast feeds";
+      } else if (sourceMode === "topics") {
+        const selectedNames = availableTopics
+          .filter((t) => includedTopicIds.has(t.id))
+          .map((t) => t.name);
+        effectiveTopic = selectedNames.join(", ");
+      } else {
+        effectiveTopic = topic.trim();
+      }
+
+      const excludedNames =
+        sourceMode === "topics"
+          ? availableTopics
+              .filter((t) => excludedTopicIds.has(t.id))
+              .map((t) => t.name)
+          : [];
 
       // Step 1: Create episode
       const createRes = await fetch("/api/episodes", {
@@ -160,6 +246,8 @@ export function EpisodeConfig({
             sourceMode === "feeds"
               ? Array.from(selectedFeedIds)
               : undefined,
+          excludeTopics:
+            excludedNames.length > 0 ? excludedNames : undefined,
           style,
           tone,
           lengthMinutes,
@@ -201,7 +289,7 @@ export function EpisodeConfig({
     } finally {
       setIsSubmitting(false);
     }
-  }, [isFormValid, isSubmitting, sourceMode, topic, selectedFeedIds, style, tone, lengthMinutes, voiceAssignments]);
+  }, [isFormValid, isSubmitting, sourceMode, topic, selectedFeedIds, availableTopics, includedTopicIds, excludedTopicIds, style, tone, lengthMinutes, voiceAssignments]);
 
   const handleReset = useCallback(() => {
     setGeneratingEpisodeId(null);
@@ -209,6 +297,8 @@ export function EpisodeConfig({
     setSourceMode("topic");
     setTopic(initialTopic);
     setSelectedFeedIds(new Set());
+    setIncludedTopicIds(new Set());
+    setExcludedTopicIds(new Set());
     setLengthMinutes(5);
     setStyle("monologue");
     setTone("serious");
@@ -265,11 +355,22 @@ export function EpisodeConfig({
                 : "text-muted-foreground"
             }`}
           >
-            From My Feeds
+            From Feeds
+          </button>
+          <button
+            type="button"
+            onClick={() => setSourceMode("topics")}
+            className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              sourceMode === "topics"
+                ? "bg-background shadow-sm"
+                : "text-muted-foreground"
+            }`}
+          >
+            From Topics
           </button>
         </div>
 
-        {/* Topic input or feed selector */}
+        {/* Topic input, feed selector, or topic selector */}
         {sourceMode === "topic" ? (
           <div className="space-y-2">
             <Label htmlFor="episode-topic">Topic</Label>
@@ -280,7 +381,7 @@ export function EpisodeConfig({
               placeholder="What should this episode be about?"
             />
           </div>
-        ) : (
+        ) : sourceMode === "feeds" ? (
           <div className="space-y-2">
             <Label>Select Feeds</Label>
             <p className="text-xs text-muted-foreground">
@@ -311,6 +412,79 @@ export function EpisodeConfig({
                     </button>
                   );
                 })}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {/* Include topics */}
+            <div className="space-y-2">
+              <Label>Include Topics</Label>
+              <p className="text-xs text-muted-foreground">
+                Select topics to base the episode on.
+              </p>
+              {availableTopics.length === 0 ? (
+                <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+                  No topics available. Add topics on the Topics page first.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {availableTopics.map((t) => {
+                    const included = includedTopicIds.has(t.id);
+                    const excluded = excludedTopicIds.has(t.id);
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => toggleIncludeTopic(t.id)}
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                          included
+                            ? "border-primary bg-primary/10 text-primary font-medium"
+                            : excluded
+                              ? "border-border opacity-40 line-through"
+                              : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                        }`}
+                      >
+                        {included && <Check className="size-3" />}
+                        <Tag className="size-3" />
+                        {t.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Exclude topics */}
+            {availableTopics.length > 0 && (
+              <div className="space-y-2">
+                <Label>Exclude Topics</Label>
+                <p className="text-xs text-muted-foreground">
+                  Select topics to exclude from episode generation.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {availableTopics
+                    .filter((t) => !includedTopicIds.has(t.id))
+                    .map((t) => {
+                      const excluded = excludedTopicIds.has(t.id);
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => toggleExcludeTopic(t.id)}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                            excluded
+                              ? "border-destructive bg-destructive/10 text-destructive font-medium"
+                              : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                          }`}
+                        >
+                          {excluded && <X className="size-3" />}
+                          <Tag className="size-3" />
+                          {t.name}
+                        </button>
+                      );
+                    })}
+                </div>
               </div>
             )}
           </div>
