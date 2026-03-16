@@ -252,10 +252,12 @@ CREATE INDEX idx_summary_gen_log_config_started ON public.summary_generation_log
 -- RPC FUNCTIONS
 -- ============================================================
 
--- Grouped episode counts to replace N+1 JS counting
+-- Grouped episode counts to replace N+1 JS counting.
+-- SECURITY INVOKER so RLS on feed_episodes is respected — callers
+-- can only count episodes they own.
 CREATE OR REPLACE FUNCTION public.feed_episode_counts(p_feed_ids uuid[])
 RETURNS TABLE(feed_id uuid, episode_count bigint)
-LANGUAGE sql STABLE SECURITY DEFINER
+LANGUAGE sql STABLE SECURITY INVOKER
 AS $$
   SELECT fe.feed_id, count(*)
   FROM public.feed_episodes fe

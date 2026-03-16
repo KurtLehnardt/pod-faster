@@ -40,6 +40,7 @@ export type Cadence = "daily" | "twice_weekly" | "weekly" | "on_new_episodes";
 
 export type TranscriptSource =
   | "rss_description"
+  | "rss_transcript"
   | "podcast_index"
   | "elevenlabs_stt"
   | "manual";
