@@ -398,26 +398,48 @@ export function EpisodeConfig({
                 No active feeds. Import feeds first.
               </p>
             ) : (
-              <div className="flex flex-wrap gap-2">
-                {activeFeeds.map((feed) => {
-                  const selected = selectedFeedIds.has(feed.id);
-                  return (
-                    <button
-                      key={feed.id}
-                      type="button"
-                      onClick={() => toggleFeed(feed.id)}
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                        selected
-                          ? "border-primary bg-primary/10 text-primary font-medium"
-                          : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-                      }`}
-                    >
-                      {selected && <Check className="size-3" />}
-                      <Rss className="size-3" />
-                      {feed.title || feed.feed_url}
-                    </button>
-                  );
-                })}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">
+                    {selectedFeedIds.size} of {activeFeeds.length} feeds selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedFeedIds.size === activeFeeds.length) {
+                        setSelectedFeedIds(new Set());
+                      } else {
+                        setSelectedFeedIds(new Set(activeFeeds.map((f) => f.id)));
+                      }
+                    }}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    {selectedFeedIds.size === activeFeeds.length
+                      ? "Deselect All"
+                      : "Select All"}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {activeFeeds.map((feed) => {
+                    const selected = selectedFeedIds.has(feed.id);
+                    return (
+                      <button
+                        key={feed.id}
+                        type="button"
+                        onClick={() => toggleFeed(feed.id)}
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                          selected
+                            ? "border-primary bg-primary/10 text-primary font-medium"
+                            : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                        }`}
+                      >
+                        {selected && <Check className="size-3" />}
+                        <Rss className="size-3" />
+                        {feed.title || feed.feed_url}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
