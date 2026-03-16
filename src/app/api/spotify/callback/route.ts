@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     return NextResponse.redirect(
-      `${appUrl}/settings?spotify=error&reason=${error}`
+      `${appUrl}/settings?spotify=error&reason=${encodeURIComponent(error)}`
     );
   }
 
