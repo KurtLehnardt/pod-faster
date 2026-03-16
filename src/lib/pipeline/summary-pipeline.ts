@@ -58,7 +58,7 @@ export interface SummaryPipelineParams {
 }
 
 /** A feed episode with its parent feed title, used internally by the pipeline. */
-interface GatheredEpisode {
+export interface GatheredEpisode {
   episodeId: string;
   feedId: string;
   podcastTitle: string;
@@ -314,7 +314,7 @@ async function autoExcludeInactiveFeeds(
 
 // ── Step 4: SUMMARIZE ────────────────────────────────────────
 
-async function summarizeTranscripts(
+export async function summarizeTranscripts(
   episodes: GatheredEpisode[],
   targetLengthMinutes: number,
 ): Promise<{ summary: NewsSummaryOutput; tokensUsed: number }> {
