@@ -6,6 +6,7 @@
  *  - URLs with embedded credentials (user:pass@)
  *  - Private / reserved IP ranges (RFC 1918, loopback, link-local, etc.)
  *  - IPv6 private ranges (::1, fc00::/7)
+ *  - Private/internal hostnames (localhost, *.local, *.internal, 0.0.0.0, [::1])
  *  - URLs exceeding 2048 characters
  */
 
@@ -36,6 +37,33 @@ function isPrivateIPv4(hostname: string): boolean {
   if (a === 169 && b === 254) return true;
   // 0.0.0.0/8 (unspecified)
   if (a === 0) return true;
+
+  return false;
+}
+
+/**
+ * Blocked hostnames and hostname suffixes that resolve to private/internal addresses.
+ * Checked case-insensitively before IP-based checks.
+ */
+const BLOCKED_HOSTNAMES = new Set([
+  "localhost",
+  "0.0.0.0",
+  "[::1]",
+]);
+
+const BLOCKED_HOSTNAME_SUFFIXES = [
+  ".local",
+  ".internal",
+];
+
+function isBlockedHostname(hostname: string): boolean {
+  const lower = hostname.toLowerCase();
+
+  if (BLOCKED_HOSTNAMES.has(lower)) return true;
+
+  for (const suffix of BLOCKED_HOSTNAME_SUFFIXES) {
+    if (lower === suffix.slice(1) || lower.endsWith(suffix)) return true;
+  }
 
   return false;
 }
@@ -109,6 +137,11 @@ export function validateFeedUrl(url: string): UrlValidationResult {
   // Hostname must exist
   if (!parsed.hostname) {
     return { valid: false, error: "URL must have a hostname" };
+  }
+
+  // Block known-private hostnames (localhost, *.local, *.internal, etc.)
+  if (isBlockedHostname(parsed.hostname)) {
+    return { valid: false, error: "URLs pointing to private or internal hostnames are not allowed" };
   }
 
   // Check private IPv4

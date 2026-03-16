@@ -148,6 +148,55 @@ describe("validateFeedUrl", () => {
     expect(validateFeedUrl("https://[fe80::1]/feed").valid).toBe(false);
   });
 
+  // ── Hostname-based SSRF vectors ──────────────────────────
+
+  it("blocks localhost", () => {
+    expect(validateFeedUrl("https://localhost/feed").valid).toBe(false);
+    expect(validateFeedUrl("https://localhost/feed").error).toContain(
+      "private or internal"
+    );
+  });
+
+  it("blocks LOCALHOST (case-insensitive)", () => {
+    expect(validateFeedUrl("https://LOCALHOST/feed").valid).toBe(false);
+  });
+
+  it("blocks localhost with port", () => {
+    expect(validateFeedUrl("https://localhost:8080/feed").valid).toBe(false);
+  });
+
+  it("blocks cloud metadata hostname (metadata.google.internal)", () => {
+    expect(
+      validateFeedUrl(
+        "http://metadata.google.internal/computeMetadata/v1/"
+      ).valid
+    ).toBe(false);
+  });
+
+  it("blocks *.local domains", () => {
+    expect(validateFeedUrl("https://something.local/feed").valid).toBe(false);
+  });
+
+  it("blocks *.internal domains", () => {
+    expect(validateFeedUrl("https://something.internal/feed").valid).toBe(
+      false
+    );
+  });
+
+  it("blocks [::1] hostname", () => {
+    expect(validateFeedUrl("http://[::1]/feed").valid).toBe(false);
+  });
+
+  it("blocks cloud metadata IP (169.254.169.254)", () => {
+    expect(
+      validateFeedUrl("http://169.254.169.254/latest/meta-data/").valid
+    ).toBe(false);
+  });
+
+  it("blocks 0.0.0.0 hostname", () => {
+    expect(validateFeedUrl("http://0.0.0.0/feed").valid).toBe(false);
+  });
+
   // ── Malformed URLs ────────────────────────────────────────
 
   it("rejects a non-URL string", () => {
