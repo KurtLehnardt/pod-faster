@@ -10,13 +10,20 @@ import { ImportDialog } from "@/components/feeds/import-dialog";
 import { EpisodeConfig } from "@/components/episodes/episode-config";
 import { useFeeds, usePollFeed } from "@/lib/hooks/use-feeds";
 
-type FeedFilter = "all" | "active" | "paused" | "error";
+type StatusFilter = "all" | "active" | "paused" | "error";
+type SourceFilter = "all" | "spotify" | "imported";
 
-const FILTER_OPTIONS: { value: FeedFilter; label: string }[] = [
+const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "active", label: "Active" },
   { value: "paused", label: "Paused" },
   { value: "error", label: "Has Errors" },
+];
+
+const SOURCE_OPTIONS: { value: SourceFilter; label: string }[] = [
+  { value: "all", label: "All Sources" },
+  { value: "spotify", label: "Spotify" },
+  { value: "imported", label: "Imported" },
 ];
 
 /**
@@ -50,14 +57,15 @@ function FeedsPageContent() {
   const { poll, loading: polling } = usePollFeed();
   const [importOpen, setImportOpen] = useState(false);
   const [episodeDialogOpen, setEpisodeDialogOpen] = useState(false);
-  const [filter, setFilter] = useState<FeedFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [searchQuery, setSearchQuery] = useState(initialSearch);
 
   const filteredFeeds = useMemo(() => {
     let result = feeds;
 
     // Apply status filter
-    switch (filter) {
+    switch (statusFilter) {
       case "active":
         result = result.filter((f) => f.is_active);
         break;
@@ -69,6 +77,11 @@ function FeedsPageContent() {
         break;
     }
 
+    // Apply source filter
+    if (sourceFilter !== "all") {
+      result = result.filter((f) => f.source === sourceFilter);
+    }
+
     // Apply text search filter (AND logic: all words must appear)
     if (searchQuery.trim()) {
       result = result.filter((f) =>
@@ -77,7 +90,7 @@ function FeedsPageContent() {
     }
 
     return result;
-  }, [feeds, filter, searchQuery]);
+  }, [feeds, statusFilter, sourceFilter, searchQuery]);
 
   async function handlePollAll() {
     try {
@@ -139,14 +152,28 @@ function FeedsPageContent() {
             )}
           </div>
 
-          {/* Status filter chips */}
-          <div className="flex flex-wrap gap-2">
-            {FILTER_OPTIONS.map(({ value, label }) => (
+          {/* Filter chips */}
+          <div className="flex flex-wrap items-center gap-2">
+            {STATUS_OPTIONS.map(({ value, label }) => (
               <button
-                key={value}
-                onClick={() => setFilter(value)}
+                key={`status-${value}`}
+                onClick={() => setStatusFilter(value)}
                 className={`rounded-full border px-3 py-1 text-sm transition-colors ${
-                  filter === value
+                  statusFilter === value
+                    ? "border-primary bg-primary/10 text-primary font-medium"
+                    : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+            <span className="mx-1 text-border">|</span>
+            {SOURCE_OPTIONS.map(({ value, label }) => (
+              <button
+                key={`source-${value}`}
+                onClick={() => setSourceFilter(value)}
+                className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+                  sourceFilter === value
                     ? "border-primary bg-primary/10 text-primary font-medium"
                     : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
                 }`}
