@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 import { triggerTranscriptionSchema } from "@/lib/validation/feed-schemas";
 import {
   processTranscription,
@@ -19,14 +19,9 @@ import {
 export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // TODO: Add per-user rate limiting (see rate-limit infrastructure task)
+  const { user, supabase, response } = await requireAuth();
+  if (response) return response;
 
   let body: unknown;
   try {
@@ -78,7 +73,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Check transcription status — only allow 'none' or 'failed'
+  // Check transcription status -- only allow 'none' or 'failed'
   if (
     episode.transcription_status !== "none" &&
     episode.transcription_status !== "failed"
@@ -108,16 +103,25 @@ export async function POST(request: NextRequest) {
   }
 
   // Process transcription
-  const result = await processTranscription({
-    feedEpisodeId: episode.id,
-    userId: user.id,
-    audioUrl: episode.audio_url,
-    durationSeconds: episode.duration_seconds,
-  });
+  try {
+    const result = await processTranscription({
+      feedEpisodeId: episode.id,
+      userId: user.id,
+      audioUrl: episode.audio_url,
+      durationSeconds: episode.duration_seconds,
+    });
 
-  if (!result.success) {
+    if (!result.success) {
+      console.error("[transcribe] Transcription failed:", result.error);
+      return NextResponse.json(
+        { error: "Internal server error" },
+        { status: 500 }
+      );
+    }
+  } catch (err) {
+    console.error("[transcribe] Unexpected error:", err);
     return NextResponse.json(
-      { error: result.error ?? "Transcription failed" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }

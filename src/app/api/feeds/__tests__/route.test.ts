@@ -5,10 +5,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createChain } from "@/__tests__/helpers/mock-supabase";
 
-// ── Mock Supabase ──────────────────────────────────────────────────────────
+// -- Mock Supabase ----------------------------------------------------------
 
 const mockGetUser = vi.fn();
 const mockFrom = vi.fn(() => createChain());
+const mockRpc = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(() =>
@@ -17,11 +18,12 @@ vi.mock("@/lib/supabase/server", () => ({
         getUser: mockGetUser,
       },
       from: mockFrom,
+      rpc: mockRpc,
     })
   ),
 }));
 
-// ── Mock RSS modules ──────────────────────────────────────────────────────
+// -- Mock RSS modules -------------------------------------------------------
 
 const mockParseFeed = vi.fn();
 const mockValidateFeedUrl = vi.fn();
@@ -39,7 +41,7 @@ vi.mock("@/lib/rss/transcript", () => ({
   extractTranscript: (...args: unknown[]) => mockExtractTranscript(...args),
 }));
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+// -- Helpers ----------------------------------------------------------------
 
 function mockUser(id = "user-123") {
   mockGetUser.mockResolvedValue({
@@ -65,7 +67,7 @@ function makeRequest(
   return new Request("http://localhost/api/feeds", init);
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────
+// -- Tests ------------------------------------------------------------------
 
 describe("GET /api/feeds", () => {
   beforeEach(() => {
@@ -83,19 +85,12 @@ describe("GET /api/feeds", () => {
     expect(json.error).toBe("Unauthorized");
   });
 
-  it("returns feeds list with episode counts", async () => {
+  it("returns feeds list with episode counts via RPC", async () => {
     mockUser();
 
     const feeds = [
       { id: "feed-1", user_id: "user-123", feed_url: "https://example.com/feed1.xml", title: "Feed 1" },
       { id: "feed-2", user_id: "user-123", feed_url: "https://example.com/feed2.xml", title: "Feed 2" },
-    ];
-
-    const episodeCounts = [
-      { feed_id: "feed-1" },
-      { feed_id: "feed-1" },
-      { feed_id: "feed-1" },
-      { feed_id: "feed-2" },
     ];
 
     // First call: podcast_feeds select
@@ -105,11 +100,13 @@ describe("GET /api/feeds", () => {
       return chain;
     });
 
-    // Second call: feed_episodes select for counts
-    mockFrom.mockImplementationOnce(() => {
-      const chain = createChain();
-      chain.in.mockResolvedValue({ data: episodeCounts, error: null });
-      return chain;
+    // RPC call for episode counts
+    mockRpc.mockResolvedValueOnce({
+      data: [
+        { feed_id: "feed-1", episode_count: 3 },
+        { feed_id: "feed-2", episode_count: 1 },
+      ],
+      error: null,
     });
 
     const { GET } = await import("../route");
@@ -228,7 +225,7 @@ describe("POST /api/feeds", () => {
       return chain;
     });
 
-    // Duplicate check — existing feed found
+    // Duplicate check -- existing feed found
     mockFrom.mockImplementationOnce(() => {
       const chain = createChain();
       chain.maybeSingle.mockResolvedValue({
@@ -250,7 +247,7 @@ describe("POST /api/feeds", () => {
     expect(json.error).toContain("already subscribed");
   });
 
-  it("creates feed with parsed metadata and episodes", async () => {
+  it("creates feed with parsed metadata and batch-upserted episodes", async () => {
     mockUser();
 
     const parsedFeed = {
@@ -279,7 +276,7 @@ describe("POST /api/feeds", () => {
       return chain;
     });
 
-    // Duplicate check — no existing feed
+    // Duplicate check -- no existing feed
     mockFrom.mockImplementationOnce(() => {
       const chain = createChain();
       chain.maybeSingle.mockResolvedValue({ data: null, error: null });
@@ -306,10 +303,13 @@ describe("POST /api/feeds", () => {
       return chain;
     });
 
-    // Insert episode
+    // Batch upsert episodes (upsert -> select)
     mockFrom.mockImplementationOnce(() => {
       const chain = createChain();
-      chain.insert.mockResolvedValue({ error: null });
+      chain.select.mockResolvedValue({
+        data: [{ id: "ep-row-1" }],
+        error: null,
+      });
       return chain;
     });
 
@@ -334,7 +334,7 @@ describe("POST /api/feeds", () => {
     expect(json.episodesImported).toBe(1);
   });
 
-  it("returns 422 when feed cannot be parsed", async () => {
+  it("returns 422 when feed cannot be parsed (sanitized error)", async () => {
     mockUser();
 
     mockParseFeed.mockRejectedValue(new Error("Invalid XML"));
@@ -362,6 +362,7 @@ describe("POST /api/feeds", () => {
     const json = await response.json();
 
     expect(response.status).toBe(422);
-    expect(json.error).toContain("Unable to fetch or parse feed");
+    // Error message should be sanitized -- no raw Error.message
+    expect(json.error).toBe("Unable to fetch or parse feed");
   });
 });

@@ -1,13 +1,13 @@
 /**
- * Single feed CRUD — get, update, and delete a podcast feed.
+ * Single feed CRUD -- get, update, and delete a podcast feed.
  *
- * GET    /api/feeds/[id]  — single feed with recent episodes
- * PUT    /api/feeds/[id]  — update feed (toggle is_active, rename)
- * DELETE /api/feeds/[id]  — delete feed (cascades episodes)
+ * GET    /api/feeds/[id]  -- single feed with recent episodes
+ * PUT    /api/feeds/[id]  -- update feed (toggle is_active, rename)
+ * DELETE /api/feeds/[id]  -- delete feed (cascades episodes)
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 import { updateFeedSchema } from "@/lib/validation/feed-schemas";
 import type { PodcastFeed, FeedEpisode } from "@/types/feed";
 
@@ -28,14 +28,8 @@ export async function GET(
   context: RouteContext
 ) {
   const { id } = await context.params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { user, supabase, response } = await requireAuth();
+  if (response) return response;
 
   // Fetch feed with ownership check
   const { data: feed, error } = await supabase
@@ -80,15 +74,10 @@ export async function PUT(
   request: NextRequest,
   context: RouteContext
 ) {
+  // TODO: Add per-user rate limiting (see rate-limit infrastructure task)
   const { id } = await context.params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { user, supabase, response } = await requireAuth();
+  if (response) return response;
 
   // Parse body
   let body: unknown;
@@ -128,7 +117,7 @@ export async function PUT(
     return NextResponse.json({ error: "Feed not found" }, { status: 404 });
   }
 
-  // Build update payload — only set fields that were provided
+  // Build update payload -- only set fields that were provided
   const payload: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
@@ -166,15 +155,10 @@ export async function DELETE(
   _request: NextRequest,
   context: RouteContext
 ) {
+  // TODO: Add per-user rate limiting (see rate-limit infrastructure task)
   const { id } = await context.params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { user, supabase, response } = await requireAuth();
+  if (response) return response;
 
   // Verify ownership
   const { data: existing } = await supabase
@@ -188,7 +172,8 @@ export async function DELETE(
     return NextResponse.json({ error: "Feed not found" }, { status: 404 });
   }
 
-  // Delete feed — cascade handles feed_episodes and summary_config_feeds
+  // ON DELETE CASCADE in the migration handles feed_episodes and summary_config_feeds.
+  // Cascades execute at the database level and bypass RLS.
   const { error } = await supabase
     .from("podcast_feeds")
     .delete()

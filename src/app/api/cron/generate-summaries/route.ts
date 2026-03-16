@@ -1,5 +1,5 @@
 /**
- * Vercel Cron endpoint — generate due summary podcasts.
+ * Vercel Cron endpoint -- generate due summary podcasts.
  *
  * GET /api/cron/generate-summaries
  *
@@ -7,6 +7,7 @@
  * where next_due_at <= now(), runs the pipeline for each.
  */
 
+import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -48,19 +49,26 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (authHeader !== `Bearer ${cronSecret}`) {
+  // Timing-safe comparison to prevent timing attacks
+  const expected = Buffer.from(`Bearer ${cronSecret}`);
+  const provided = Buffer.from(authHeader ?? "");
+  if (
+    expected.length !== provided.length ||
+    !crypto.timingSafeEqual(expected, provided)
+  ) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const supabase = createAdminClient();
   const now = new Date().toISOString();
 
-  // Query active summary configs that are due
+  // Query active summary configs that are due (bounded to 10 to prevent unbounded work)
   const { data: rawConfigs, error: queryError } = await supabase
     .from("summary_configs")
     .select("*")
     .eq("is_active", true)
-    .lte("next_due_at", now);
+    .lte("next_due_at", now)
+    .limit(10);
 
   if (queryError) {
     console.error("[cron/generate-summaries] Query error:", queryError);
@@ -76,46 +84,55 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ processed: 0, skipped: 0 });
   }
 
+  // Process configs in parallel with Promise.allSettled
+  const results = await Promise.allSettled(
+    dueConfigs.map(async (config) => {
+      const cadence = config.cadence as Cadence;
+
+      // Idempotency check: skip if last_generated_at is within half the cadence
+      if (config.last_generated_at) {
+        const lastGenTime = new Date(config.last_generated_at).getTime();
+        const halfInterval = cadenceHalfIntervalMs(cadence);
+
+        if (Date.now() - lastGenTime < halfInterval) {
+          console.log(
+            `[cron/generate-summaries] Skipping config ${config.id} -- generated too recently`
+          );
+          return "skipped" as const;
+        }
+      }
+
+      const voiceConfig = config.voice_config as unknown as VoiceConfig | null;
+
+      const pipelineParams: SummaryPipelineParams = {
+        summaryConfigId: config.id,
+        userId: config.user_id,
+        style: config.style as EpisodeStyle,
+        tone: config.tone as EpisodeTone,
+        lengthMinutes: config.length_minutes,
+        voiceConfig: voiceConfig ?? { voices: [] },
+      };
+
+      await runSummaryPipeline(pipelineParams);
+      return "processed" as const;
+    })
+  );
+
   let processed = 0;
   let skipped = 0;
 
-  for (const config of dueConfigs) {
-    const cadence = config.cadence as Cadence;
-
-    // Idempotency check: skip if last_generated_at is within half the cadence
-    if (config.last_generated_at) {
-      const lastGenTime = new Date(config.last_generated_at).getTime();
-      const halfInterval = cadenceHalfIntervalMs(cadence);
-
-      if (Date.now() - lastGenTime < halfInterval) {
-        console.log(
-          `[cron/generate-summaries] Skipping config ${config.id} — generated too recently`
-        );
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      if (result.value === "processed") {
+        processed++;
+      } else {
         skipped++;
-        continue;
       }
-    }
-
-    const voiceConfig = config.voice_config as unknown as VoiceConfig | null;
-
-    const pipelineParams: SummaryPipelineParams = {
-      summaryConfigId: config.id,
-      userId: config.user_id,
-      style: config.style as EpisodeStyle,
-      tone: config.tone as EpisodeTone,
-      lengthMinutes: config.length_minutes,
-      voiceConfig: voiceConfig ?? { voices: [] },
-    };
-
-    try {
-      await runSummaryPipeline(pipelineParams);
-      processed++;
-    } catch (error) {
+    } else {
       console.error(
-        `[cron/generate-summaries] Pipeline failed for config ${config.id}:`,
-        error
+        "[cron/generate-summaries] Pipeline failed:",
+        result.reason
       );
-      // Pipeline handles its own error logging, so just continue
       skipped++;
     }
   }

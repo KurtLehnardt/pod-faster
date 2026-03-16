@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createChain } from "@/__tests__/helpers/mock-supabase";
 
-// ── Mock Supabase ──────────────────────────────────────────────────────────
+// -- Mock Supabase ----------------------------------------------------------
 
 const mockGetUser = vi.fn();
 const mockFrom = vi.fn(() => createChain());
@@ -19,7 +19,7 @@ vi.mock("@/lib/supabase/server", () => ({
   ),
 }));
 
-// ── Mock validation ──────────────────────────────────────────────────────
+// -- Mock validation --------------------------------------------------------
 
 vi.mock("@/lib/validation/feed-schemas", () => {
   const { z } = require("zod");
@@ -31,7 +31,7 @@ vi.mock("@/lib/validation/feed-schemas", () => {
   };
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+// -- Helpers ----------------------------------------------------------------
 
 function mockUser(id = "user-123") {
   mockGetUser.mockResolvedValue({ data: { user: { id } } });
@@ -131,7 +131,7 @@ function mockUpdateWithSelect(data: unknown, error: unknown = null) {
 }
 
 /**
- * Mock a .delete().eq("id").eq("user_id") query — two chained .eq() calls
+ * Mock a .delete().eq("id").eq("user_id") query -- two chained .eq() calls
  * where the second is the terminal that gets awaited.
  */
 function mockDeleteChain(error: unknown = null) {
@@ -145,7 +145,7 @@ function mockDeleteChain(error: unknown = null) {
   });
 }
 
-// ── Tests: GET /api/feeds/[id] ───────────────────────────────────────────
+// -- Tests: GET /api/feeds/[id] ---------------------------------------------
 
 describe("GET /api/feeds/[id]", () => {
   beforeEach(() => {
@@ -212,7 +212,7 @@ describe("GET /api/feeds/[id]", () => {
   });
 });
 
-// ── Tests: PUT /api/feeds/[id] ───────────────────────────────────────────
+// -- Tests: PUT /api/feeds/[id] ---------------------------------------------
 
 describe("PUT /api/feeds/[id]", () => {
   beforeEach(() => {
@@ -307,7 +307,7 @@ describe("PUT /api/feeds/[id]", () => {
   });
 });
 
-// ── Tests: DELETE /api/feeds/[id] ────────────────────────────────────────
+// -- Tests: DELETE /api/feeds/[id] ------------------------------------------
 
 describe("DELETE /api/feeds/[id]", () => {
   beforeEach(() => {

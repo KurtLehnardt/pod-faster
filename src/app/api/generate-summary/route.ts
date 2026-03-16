@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 import {
   runSummaryPipeline,
   type SummaryPipelineParams,
@@ -33,14 +33,9 @@ function isValidBody(body: unknown): body is GenerateSummaryBody {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // TODO: Add per-user rate limiting (see rate-limit infrastructure task)
+  const { user, supabase, response } = await requireAuth();
+  if (response) return response;
 
   let body: unknown;
   try {
@@ -59,7 +54,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Fetch the config — verify ownership
+  // Fetch the config -- verify ownership
   const { data: rawConfig, error: configError } = await supabase
     .from("summary_configs")
     .select("*")
@@ -96,7 +91,15 @@ export async function POST(request: NextRequest) {
 
   // Run pipeline synchronously within the function timeout.
   // The client can poll summary_generation_log for progress.
-  await runSummaryPipeline(pipelineParams);
+  try {
+    await runSummaryPipeline(pipelineParams);
+  } catch (err) {
+    console.error("[generate-summary] Pipeline error:", err);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json({
     started: true,

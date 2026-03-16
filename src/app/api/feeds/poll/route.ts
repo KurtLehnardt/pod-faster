@@ -1,12 +1,12 @@
 /**
- * Feed polling — trigger poll for new episodes.
+ * Feed polling -- trigger poll for new episodes.
  *
  * POST /api/feeds/poll
- * Body: { feedId?: string } — poll specific feed or all active feeds
+ * Body: { feedId?: string } -- poll specific feed or all active feeds
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 import { pollFeed } from "@/lib/rss/poller";
 import { extractTranscript } from "@/lib/rss/transcript";
 import type { PodcastFeed } from "@/types/feed";
@@ -27,20 +27,16 @@ const MAX_POLL_ERRORS = 5;
 // ---------------------------------------------------------------------------
 
 type PodcastFeedRow = Database["public"]["Tables"]["podcast_feeds"]["Row"];
+type FeedEpisodeInsert = Database["public"]["Tables"]["feed_episodes"]["Insert"];
 
 // ---------------------------------------------------------------------------
 // POST /api/feeds/poll
 // ---------------------------------------------------------------------------
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // TODO: Add per-user rate limiting (see rate-limit infrastructure task)
+  const { user, supabase, response } = await requireAuth();
+  if (response) return response;
 
   // Parse body (feedId is optional)
   let feedId: string | undefined;
@@ -63,7 +59,7 @@ export async function POST(request: NextRequest) {
   let feedsToPoll: PodcastFeed[];
 
   if (feedId) {
-    // Specific feed — verify ownership
+    // Specific feed -- verify ownership
     const { data: feedData, error } = await supabase
       .from("podcast_feeds")
       .select("*")
@@ -144,29 +140,28 @@ export async function POST(request: NextRequest) {
 
       let newEpisodeCount = 0;
 
-      // Insert new episodes
-      for (const ep of result.newEpisodes) {
-        // Try to extract a free transcript
-        let transcript: string | null = null;
-        let transcriptSource: "rss_description" | "podcast_index" | null =
-          null;
+      // Batch upsert new episodes
+      if (result.newEpisodes.length > 0) {
+        // Extract transcripts for each episode first
+        const episodeRows: FeedEpisodeInsert[] = [];
+        for (const ep of result.newEpisodes) {
+          let transcript: string | null = null;
+          let transcriptSource: "rss_description" | "podcast_index" | null = null;
 
-        try {
-          const txResult = await extractTranscript({
-            transcriptUrl: ep.transcriptUrl,
-            description: ep.description,
-            audioUrl: ep.audioUrl,
-            podcastTitle: result.feed.title,
-          });
-          transcript = txResult.transcript;
-          transcriptSource = txResult.source;
-        } catch {
-          // Transcript extraction failure is non-fatal
-        }
+          try {
+            const txResult = await extractTranscript({
+              transcriptUrl: ep.transcriptUrl,
+              description: ep.description,
+              audioUrl: ep.audioUrl,
+              podcastTitle: result.feed.title,
+            });
+            transcript = txResult.transcript;
+            transcriptSource = txResult.source;
+          } catch {
+            // Transcript extraction failure is non-fatal
+          }
 
-        const { error: epError } = await supabase
-          .from("feed_episodes")
-          .insert({
+          episodeRows.push({
             feed_id: feed.id,
             user_id: feed.user_id,
             guid: ep.guid,
@@ -179,14 +174,23 @@ export async function POST(request: NextRequest) {
             transcript_source: transcriptSource,
             transcription_status: transcript ? "completed" : "none",
           });
+        }
 
-        if (!epError) {
-          newEpisodeCount++;
-        } else {
+        const { error: upsertError, data: upsertData } = await supabase
+          .from("feed_episodes")
+          .upsert(episodeRows, {
+            onConflict: "feed_id,guid",
+            ignoreDuplicates: true,
+          })
+          .select("id");
+
+        if (upsertError) {
           console.warn(
-            "[feeds/poll] Episode insert warning:",
-            epError.message
+            "[feeds/poll] Episode batch upsert warning:",
+            upsertError.message
           );
+        } else {
+          newEpisodeCount = upsertData?.length ?? 0;
         }
       }
 
@@ -237,14 +241,12 @@ export async function POST(request: NextRequest) {
       totalPolled++;
       totalNewEpisodes += newEpisodeCount;
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Unknown error";
-      console.error(`[feeds/poll] Error polling feed ${feed.id}:`, message);
+      console.error(`[feeds/poll] Error polling feed ${feed.id}:`, err);
 
       // Increment error count and potentially auto-deactivate
       const newErrorCount = feed.poll_error_count + 1;
       const updatePayload: Record<string, unknown> = {
-        poll_error: message,
+        poll_error: err instanceof Error ? err.message : "Unknown error",
         poll_error_count: newErrorCount,
         last_polled_at: new Date().toISOString(),
       };

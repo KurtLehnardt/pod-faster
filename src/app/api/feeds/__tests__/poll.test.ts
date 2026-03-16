@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createChain } from "@/__tests__/helpers/mock-supabase";
 
-// ── Mock Supabase ──────────────────────────────────────────────────────────
+// -- Mock Supabase ----------------------------------------------------------
 
 const mockGetUser = vi.fn();
 const mockFrom = vi.fn(() => createChain());
@@ -19,7 +19,7 @@ vi.mock("@/lib/supabase/server", () => ({
   ),
 }));
 
-// ── Mock RSS modules ──────────────────────────────────────────────────────
+// -- Mock RSS modules -------------------------------------------------------
 
 const mockPollFeed = vi.fn();
 const mockExtractTranscript = vi.fn();
@@ -32,7 +32,7 @@ vi.mock("@/lib/rss/transcript", () => ({
   extractTranscript: (...args: unknown[]) => mockExtractTranscript(...args),
 }));
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+// -- Helpers ----------------------------------------------------------------
 
 function mockUser(id = "user-123") {
   mockGetUser.mockResolvedValue({ data: { user: { id } } });
@@ -85,12 +85,12 @@ function mockFeedFetchById(feed: ReturnType<typeof makeFeed> | null, error: unkn
 
 /**
  * Helper: set up a mockFrom for a query that ends with
- * .select("*").eq(user_id).eq(is_active) — the second .eq() is the terminal.
+ * .select("*").eq(user_id).eq(is_active) -- the second .eq() is the terminal.
  */
 function mockActiveFeedsFetch(feeds: ReturnType<typeof makeFeed>[]) {
   mockFrom.mockImplementationOnce(() => {
     const chain = createChain();
-    // Two chained .eq() calls — first returns chain, second resolves
+    // Two chained .eq() calls -- first returns chain, second resolves
     chain.eq
       .mockReturnValueOnce(chain)
       .mockResolvedValueOnce({ data: feeds, error: null });
@@ -113,18 +113,19 @@ function mockExistingEpisodes(guids: string[]) {
 }
 
 /**
- * Helper: set up a mockFrom for an .insert() call that resolves
+ * Helper: set up a mockFrom for a batch upsert that resolves with .select()
  */
-function mockEpisodeInsert(error: unknown = null) {
+function mockBatchEpisodeUpsert(count = 1, error: unknown = null) {
   mockFrom.mockImplementationOnce(() => {
     const chain = createChain();
-    chain.insert.mockResolvedValue({ error });
+    const rows = Array.from({ length: count }, (_, i) => ({ id: `ep-row-${i}` }));
+    chain.select.mockResolvedValue({ data: rows, error });
     return chain;
   });
 }
 
 /**
- * Helper: set up a mockFrom for .update(payload).eq(id) — single .eq() terminal.
+ * Helper: set up a mockFrom for .update(payload).eq(id) -- single .eq() terminal.
  * Returns the captured update payload via a ref callback.
  */
 function mockFeedUpdate(onPayload?: (p: Record<string, unknown>) => void) {
@@ -141,7 +142,7 @@ function mockFeedUpdate(onPayload?: (p: Record<string, unknown>) => void) {
   });
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────
+// -- Tests ------------------------------------------------------------------
 
 describe("POST /api/feeds/poll", () => {
   beforeEach(() => {
@@ -168,7 +169,7 @@ describe("POST /api/feeds/poll", () => {
     expect(json.error).toBe("Unauthorized");
   });
 
-  it("polls a single feed and returns new episodes", async () => {
+  it("polls a single feed and returns new episodes via batch upsert", async () => {
     mockUser();
 
     const feed = makeFeed();
@@ -198,8 +199,8 @@ describe("POST /api/feeds/poll", () => {
     // 2. Fetch existing episode GUIDs -> .select("guid").eq("feed_id")
     mockExistingEpisodes(["ep-old-1"]);
 
-    // 3. Insert new episode
-    mockEpisodeInsert();
+    // 3. Batch upsert new episodes
+    mockBatchEpisodeUpsert(1);
 
     // 4. Update feed metadata -> .update().eq()
     mockFeedUpdate();
@@ -286,7 +287,7 @@ describe("POST /api/feeds/poll", () => {
     // 2. Existing episode GUIDs
     mockExistingEpisodes([]);
 
-    // 3. Update feed with error — capture the payload
+    // 3. Update feed with error -- capture the payload
     let updatePayload: Record<string, unknown> | undefined;
     mockFeedUpdate((p) => {
       updatePayload = p;
@@ -336,8 +337,8 @@ describe("POST /api/feeds/poll", () => {
     // 2. Existing episodes
     mockExistingEpisodes([]);
 
-    // 3. Insert episode
-    mockEpisodeInsert();
+    // 3. Batch upsert episode
+    mockBatchEpisodeUpsert(1);
 
     // 4. Update feed metadata
     mockFeedUpdate();
@@ -388,10 +389,10 @@ describe("POST /api/feeds/poll", () => {
     // 2. Existing episodes
     mockExistingEpisodes([]);
 
-    // 3. Insert episode
-    mockEpisodeInsert();
+    // 3. Batch upsert episode
+    mockBatchEpisodeUpsert(1);
 
-    // 4. Update feed metadata — capture the payload
+    // 4. Update feed metadata -- capture the payload
     let updatePayload: Record<string, unknown> | undefined;
     mockFeedUpdate((p) => {
       updatePayload = p;
@@ -444,7 +445,7 @@ describe("POST /api/feeds/poll", () => {
   it("returns 404 when feed not found", async () => {
     mockUser();
 
-    // Fetch feed — not found
+    // Fetch feed -- not found
     mockFeedFetchById(null, { message: "Not found" });
 
     const { POST } = await import("../poll/route");

@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createChain } from "@/__tests__/helpers/mock-supabase";
 
-// ── Mock Supabase ──────────────────────────────────────────────────────────
+// -- Mock Supabase ----------------------------------------------------------
 
 const mockGetUser = vi.fn();
 const mockFrom = vi.fn(() => createChain());
@@ -21,7 +21,7 @@ vi.mock("@/lib/supabase/server", () => ({
   ),
 }));
 
-// ── Mock RSS modules ──────────────────────────────────────────────────────
+// -- Mock RSS modules -------------------------------------------------------
 
 const mockParseOpml = vi.fn();
 const mockParseFeed = vi.fn();
@@ -31,7 +31,7 @@ vi.mock("@/lib/rss/parser", () => ({
   parseFeed: (...args: unknown[]) => mockParseFeed(...args),
 }));
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+// -- Helpers ----------------------------------------------------------------
 
 function mockUser(id = "user-123") {
   mockGetUser.mockResolvedValue({
@@ -62,7 +62,7 @@ const SAMPLE_OPML = `<?xml version="1.0"?>
   </body>
 </opml>`;
 
-// ── Tests ─────────────────────────────────────────────────────────────────
+// -- Tests ------------------------------------------------------------------
 
 describe("POST /api/feeds/import", () => {
   beforeEach(() => {
@@ -104,7 +104,7 @@ describe("POST /api/feeds/import", () => {
     expect(json.error).toContain("Invalid");
   });
 
-  it("creates multiple feeds from OPML", async () => {
+  it("creates multiple feeds from OPML with batch processing", async () => {
     mockUser();
 
     const opmlFeeds = [
@@ -148,41 +148,20 @@ describe("POST /api/feeds/import", () => {
       return chain;
     });
 
-    // Feed 1 insert
-    mockFrom.mockImplementationOnce(() => {
+    // Both feeds run in parallel via Promise.allSettled, so use
+    // table-name-based mock to handle non-deterministic call order.
+    let feedInsertCount = 0;
+    mockFrom.mockImplementation((table: string) => {
       const chain = createChain();
-      chain.single.mockResolvedValue({
-        data: { id: "feed-1" },
-        error: null,
-      });
-      return chain;
-    });
-
-    // Feed 1 episode insert
-    mockFrom.mockImplementationOnce(() => {
-      const chain = createChain();
-      chain.insert.mockReturnValue(
-        Promise.resolve({ error: null })
-      );
-      return chain;
-    });
-
-    // Feed 2 insert
-    mockFrom.mockImplementationOnce(() => {
-      const chain = createChain();
-      chain.single.mockResolvedValue({
-        data: { id: "feed-2" },
-        error: null,
-      });
-      return chain;
-    });
-
-    // Feed 2 episode insert
-    mockFrom.mockImplementationOnce(() => {
-      const chain = createChain();
-      chain.insert.mockReturnValue(
-        Promise.resolve({ error: null })
-      );
+      if (table === "podcast_feeds") {
+        feedInsertCount++;
+        chain.single.mockResolvedValue({
+          data: { id: `feed-${feedInsertCount}` },
+          error: null,
+        });
+      } else if (table === "feed_episodes") {
+        chain.upsert.mockResolvedValue({ error: null });
+      }
       return chain;
     });
 
@@ -220,7 +199,7 @@ describe("POST /api/feeds/import", () => {
       return chain;
     });
 
-    // Existing feeds — feed1 already exists
+    // Existing feeds -- feed1 already exists
     mockFrom.mockImplementationOnce(() => {
       const chain = createChain();
       chain.eq.mockResolvedValue({
@@ -230,8 +209,9 @@ describe("POST /api/feeds/import", () => {
       return chain;
     });
 
-    // Feed 2 insert (feed1 is skipped)
-    mockFrom.mockImplementationOnce(() => {
+    // Feed 2 insert (feed1 is filtered out before batch processing).
+    // Use mockImplementation for robustness with parallel batches.
+    mockFrom.mockImplementation(() => {
       const chain = createChain();
       chain.single.mockResolvedValue({
         data: { id: "feed-2" },
@@ -256,7 +236,7 @@ describe("POST /api/feeds/import", () => {
       { title: "Feed 1", feedUrl: "https://example.com/feed1.xml" },
     ]);
 
-    // Count query — already at limit
+    // Count query -- already at limit
     mockFrom.mockImplementationOnce(() => {
       const chain = createChain();
       chain.eq.mockResolvedValue({ count: 50, error: null });
@@ -286,7 +266,7 @@ describe("POST /api/feeds/import", () => {
     expect(json.error).toContain("No valid feed URLs");
   });
 
-  it("returns 422 when OPML parsing fails", async () => {
+  it("returns 422 when OPML parsing fails (sanitized error)", async () => {
     mockUser();
 
     mockParseOpml.mockRejectedValue(new Error("Invalid XML"));
@@ -296,6 +276,7 @@ describe("POST /api/feeds/import", () => {
     const json = await response.json();
 
     expect(response.status).toBe(422);
-    expect(json.error).toContain("OPML parse error");
+    // Error message should be sanitized -- no raw Error.message
+    expect(json.error).toBe("OPML parse error");
   });
 });

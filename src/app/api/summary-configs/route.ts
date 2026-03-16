@@ -1,12 +1,12 @@
 /**
- * Summary Config CRUD — list and create summary configs.
+ * Summary Config CRUD -- list and create summary configs.
  *
- * GET  /api/summary-configs       — list user's summary configs
- * POST /api/summary-configs       — create a new summary config + link feeds
+ * GET  /api/summary-configs       -- list user's summary configs
+ * POST /api/summary-configs       -- create a new summary config + link feeds
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 import { createSummaryConfigSchema } from "@/lib/validation/feed-schemas";
 import { computeNextDueAt } from "@/lib/pipeline/summary-pipeline";
 import type { SummaryConfig } from "@/types/feed";
@@ -17,14 +17,8 @@ import type { Json } from "@/types/database.types";
 // ---------------------------------------------------------------------------
 
 export async function GET() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { user, supabase, response } = await requireAuth();
+  if (response) return response;
 
   // Fetch user's summary configs
   const { data: rawConfigs, error: configsError } = await supabase
@@ -84,14 +78,9 @@ export async function GET() {
 // ---------------------------------------------------------------------------
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // TODO: Add per-user rate limiting (see rate-limit infrastructure task)
+  const { user, supabase, response } = await requireAuth();
+  if (response) return response;
 
   let body: unknown;
   try {

@@ -1,13 +1,13 @@
 /**
- * Summary Config detail — get, update, delete a single summary config.
+ * Summary Config detail -- get, update, delete a single summary config.
  *
- * GET    /api/summary-configs/[id] — single config with linked feeds and history
- * PUT    /api/summary-configs/[id] — update config
- * DELETE /api/summary-configs/[id] — delete config
+ * GET    /api/summary-configs/[id] -- single config with linked feeds and history
+ * PUT    /api/summary-configs/[id] -- update config
+ * DELETE /api/summary-configs/[id] -- delete config
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 import { updateSummaryConfigSchema } from "@/lib/validation/feed-schemas";
 import { computeNextDueAt } from "@/lib/pipeline/summary-pipeline";
 import type { SummaryConfig, Cadence } from "@/types/feed";
@@ -24,14 +24,8 @@ export async function GET(
   context: RouteContext
 ) {
   const { id } = await context.params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { user, supabase, response } = await requireAuth();
+  if (response) return response;
 
   // Fetch config with ownership check
   const { data: rawConfig, error: configError } = await supabase
@@ -88,15 +82,10 @@ export async function PUT(
   request: NextRequest,
   context: RouteContext
 ) {
+  // TODO: Add per-user rate limiting (see rate-limit infrastructure task)
   const { id } = await context.params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { user, supabase, response } = await requireAuth();
+  if (response) return response;
 
   // Ownership check
   const { data: rawExisting, error: existingError } = await supabase
@@ -197,7 +186,18 @@ export async function PUT(
       .insert(feedRows);
 
     if (insertError) {
-      console.error("[summary-configs] Insert feed links error:", insertError);
+      // Finding 9: Log the incident when insert fails after delete (atomicity concern)
+      console.error(
+        "[summary-configs] CRITICAL: Insert feed links failed after delete. " +
+        "Feed links for config %s may be in an inconsistent state. " +
+        "Manual intervention may be required.",
+        id,
+        insertError
+      );
+      return NextResponse.json(
+        { error: "Failed to update feed links" },
+        { status: 500 }
+      );
     }
   }
 
@@ -221,15 +221,10 @@ export async function DELETE(
   _request: NextRequest,
   context: RouteContext
 ) {
+  // TODO: Add per-user rate limiting (see rate-limit infrastructure task)
   const { id } = await context.params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { user, supabase, response } = await requireAuth();
+  if (response) return response;
 
   // Ownership check + delete
   const { error: deleteError } = await supabase
