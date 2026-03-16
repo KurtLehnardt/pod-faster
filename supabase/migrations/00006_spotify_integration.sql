@@ -91,7 +91,7 @@ CREATE INDEX idx_spotify_tokens_user_id
 CREATE TRIGGER update_spotify_tokens_updated_at
   BEFORE UPDATE ON public.spotify_tokens
   FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at();
+  EXECUTE FUNCTION public.handle_updated_at();
 
 -- ---------------------------------------------------------------------------
 -- Trigger: auto-update updated_at on spotify_subscriptions
@@ -99,4 +99,4 @@ CREATE TRIGGER update_spotify_tokens_updated_at
 CREATE TRIGGER update_spotify_subscriptions_updated_at
   BEFORE UPDATE ON public.spotify_subscriptions
   FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at();
+  EXECUTE FUNCTION public.handle_updated_at();
