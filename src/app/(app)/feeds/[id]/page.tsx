@@ -25,7 +25,7 @@ export default function FeedDetailPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
-  const { feed, episodes, loading, error, refresh } = useFeed(id);
+  const { feed, episodes, initialLoading, error, refresh } = useFeed(id);
   const { poll, loading: polling } = usePollFeed();
   const { deleteFeed, loading: deleting } = useDeleteFeed();
   const { updateFeed } = useUpdateFeed();
@@ -78,7 +78,7 @@ export default function FeedDetailPage({
   // Use optimistic value if set, otherwise use server value
   const isActive = activeOverride ?? feed?.is_active ?? false;
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="flex items-center justify-center py-16">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
