@@ -23,18 +23,23 @@ const VALID_TONES: EpisodeTone[] = [
 ];
 
 interface CreateEpisodeBody {
-  topicQuery: string;
+  topicQuery?: string;
   style: EpisodeStyle;
   tone: EpisodeTone;
   lengthMinutes?: number;
   voiceConfig: VoiceConfig;
+  sourceType?: "topic" | "feed_summary";
+  feedIds?: string[];
 }
 
 function isValidCreateBody(body: unknown): body is CreateEpisodeBody {
   if (typeof body !== "object" || body === null) return false;
   const obj = body as Record<string, unknown>;
 
-  if (typeof obj.topicQuery !== "string" || !obj.topicQuery.trim()) return false;
+  // topicQuery is required for topic episodes but optional for feed_summary
+  if (obj.sourceType !== "feed_summary") {
+    if (typeof obj.topicQuery !== "string" || !obj.topicQuery.trim()) return false;
+  }
   if (!VALID_STYLES.includes(obj.style as EpisodeStyle)) return false;
   if (!VALID_TONES.includes(obj.tone as EpisodeTone)) return false;
 
@@ -48,6 +53,17 @@ function isValidCreateBody(body: unknown): body is CreateEpisodeBody {
   if (typeof obj.voiceConfig !== "object" || obj.voiceConfig === null) return false;
   const vc = obj.voiceConfig as Record<string, unknown>;
   if (!Array.isArray(vc.voices) || vc.voices.length === 0) return false;
+
+  // sourceType validation
+  if (obj.sourceType !== undefined) {
+    if (obj.sourceType !== "topic" && obj.sourceType !== "feed_summary") return false;
+  }
+
+  // feedIds required when sourceType is feed_summary
+  if (obj.sourceType === "feed_summary") {
+    if (!Array.isArray(obj.feedIds) || obj.feedIds.length === 0 || obj.feedIds.length > 50) return false;
+    if (!obj.feedIds.every((id: unknown) => typeof id === "string" && id.trim().length > 0)) return false;
+  }
 
   return true;
 }
@@ -136,7 +152,26 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { topicQuery, style, tone, lengthMinutes = 5, voiceConfig } = body;
+  const { style, tone, lengthMinutes = 5, voiceConfig, sourceType = "topic", feedIds } = body;
+  // Auto-generate topicQuery for feed_summary episodes when not provided
+  const topicQuery = body.topicQuery?.trim() || (sourceType === "feed_summary" ? "Feed summary" : "");
+
+  // Validate feedIds ownership — prevent cross-user feed access
+  if (sourceType === "feed_summary" && feedIds) {
+    const { data: ownedFeeds, error: feedError } = await supabase
+      .from("podcast_feeds")
+      .select("id")
+      .in("id", feedIds)
+      .eq("user_id", user.id);
+
+    if (feedError) {
+      return NextResponse.json({ error: "Failed to validate feed ownership" }, { status: 500 });
+    }
+
+    if (!ownedFeeds || ownedFeeds.length !== feedIds.length) {
+      return NextResponse.json({ error: "One or more feed IDs are invalid or not owned by you" }, { status: 403 });
+    }
+  }
 
   // Create episode row in pending state
   const { data: episode, error } = await supabase
@@ -148,6 +183,10 @@ export async function POST(request: NextRequest) {
       tone,
       length_minutes: lengthMinutes,
       voice_config: voiceConfig as unknown as Json,
+      source_type: sourceType,
+      ...(sourceType === "feed_summary" && feedIds
+        ? { sources: feedIds.map((id) => ({ feedId: id })) as unknown as Json }
+        : {}),
       status: "pending" as const,
       claude_tokens_used: 0,
       elevenlabs_characters_used: 0,

@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import type { EpisodeStyle, EpisodeTone, VoiceConfig } from "@/types/episode";
 import { runPipeline } from "@/lib/pipeline/orchestrator";
+import { runFeedSummaryPipeline } from "@/lib/pipeline/feed-summary-pipeline";
 
 // Allow up to 300s on Vercel Pro, 60s on Hobby
 export const maxDuration = 300;
@@ -65,6 +66,8 @@ export async function POST(request: NextRequest) {
       tone: string;
       length_minutes: number;
       voice_config: unknown;
+      source_type: "topic" | "feed_summary";
+      sources: unknown;
     }>();
 
   if (error || !episode) {
@@ -88,17 +91,40 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Run pipeline synchronously within the function timeout.
+  // Run the correct pipeline based on source_type.
   // The client polls episode status for progress updates.
-  await runPipeline({
-    episodeId: episode.id,
-    userId: user.id,
-    topicQuery: episode.topic_query,
-    style: episode.style as EpisodeStyle,
-    tone: episode.tone as EpisodeTone,
-    lengthMinutes: episode.length_minutes,
-    voiceConfig,
-  });
+  if (episode.source_type === "feed_summary") {
+    // Extract feedIds from sources JSONB
+    const sources = episode.sources as Array<{ feedId: string }> | null;
+    const feedIds = sources?.map((s) => s.feedId).filter(Boolean) ?? [];
+
+    if (feedIds.length === 0) {
+      return NextResponse.json(
+        { error: "Episode has no feed sources configured" },
+        { status: 400 },
+      );
+    }
+
+    await runFeedSummaryPipeline({
+      episodeId: episode.id,
+      userId: user.id,
+      feedIds,
+      style: episode.style as EpisodeStyle,
+      tone: episode.tone as EpisodeTone,
+      lengthMinutes: episode.length_minutes,
+      voiceConfig,
+    });
+  } else {
+    await runPipeline({
+      episodeId: episode.id,
+      userId: user.id,
+      topicQuery: episode.topic_query,
+      style: episode.style as EpisodeStyle,
+      tone: episode.tone as EpisodeTone,
+      lengthMinutes: episode.length_minutes,
+      voiceConfig,
+    });
+  }
 
   return NextResponse.json({
     started: true,
