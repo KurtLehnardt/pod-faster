@@ -26,10 +26,23 @@ export function ImportDialog({ open, onOpenChange, onSuccess }: ImportDialogProp
   const [mode, setMode] = useState<Mode>("url");
   const [feedUrl, setFeedUrl] = useState("");
   const [opmlContent, setOpmlContent] = useState("");
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
 
   const { addFeed, loading: addLoading, error: addError } = useAddFeed();
   const { importOpml, loading: importLoading, error: importError } = useImportOpml();
+
+  // Reset all state when dialog closes (BUG-002)
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen) {
+      setMode("url");
+      setFeedUrl("");
+      setOpmlContent("");
+      setUploadedFileName(null);
+      setResult(null);
+    }
+    onOpenChange(nextOpen);
+  }
 
   const loading = addLoading || importLoading;
   const error = addError || importError;
@@ -65,13 +78,14 @@ export function ImportDialog({ open, onOpenChange, onSuccess }: ImportDialogProp
     reader.onload = () => {
       if (typeof reader.result === "string") {
         setOpmlContent(reader.result);
+        setUploadedFileName(file.name);
       }
     };
     reader.readAsText(file);
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Import Podcast Feeds</DialogTitle>
@@ -123,17 +137,24 @@ export function ImportDialog({ open, onOpenChange, onSuccess }: ImportDialogProp
                 accept=".opml,.xml"
                 onChange={handleFileUpload}
               />
+              {uploadedFileName && (
+                <p className="text-sm text-green-600">
+                  Uploaded: {uploadedFileName}
+                </p>
+              )}
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="opml-content">Or paste OPML content</Label>
-              <Textarea
-                id="opml-content"
-                placeholder="<?xml version='1.0'?>..."
-                value={opmlContent}
-                onChange={(e) => setOpmlContent(e.target.value)}
-                rows={6}
-              />
-            </div>
+            {!uploadedFileName && (
+              <div className="space-y-1.5">
+                <Label htmlFor="opml-content">Or paste OPML content</Label>
+                <Textarea
+                  id="opml-content"
+                  placeholder="<?xml version='1.0'?>..."
+                  value={opmlContent}
+                  onChange={(e) => setOpmlContent(e.target.value)}
+                  rows={6}
+                />
+              </div>
+            )}
             <Button onClick={handleImportOpml} disabled={loading || !opmlContent.trim()} className="w-full">
               {importLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
               Import Feeds
