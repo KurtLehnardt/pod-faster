@@ -13,15 +13,7 @@ import { parseFeed } from "@/lib/rss/parser";
 import { extractTranscript } from "@/lib/rss/transcript";
 import type { PodcastFeed } from "@/types/feed";
 import type { Database } from "@/types/database.types";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const MAX_FEEDS_PER_USER = parseInt(
-  process.env.MAX_FEEDS_PER_USER ?? "50",
-  10
-);
+import { MAX_FEEDS_PER_USER } from "@/lib/utils/constants";
 
 // ---------------------------------------------------------------------------
 // Row types from Database schema

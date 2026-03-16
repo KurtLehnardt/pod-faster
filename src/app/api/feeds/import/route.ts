@@ -10,17 +10,9 @@ import { createClient } from "@/lib/supabase/server";
 import { importOpmlSchema } from "@/lib/validation/feed-schemas";
 import { parseOpml, parseFeed } from "@/lib/rss/parser";
 import type { Database } from "@/types/database.types";
+import { MAX_FEEDS_PER_USER } from "@/lib/utils/constants";
 
 type PodcastFeedRow = Database["public"]["Tables"]["podcast_feeds"]["Row"];
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const MAX_FEEDS_PER_USER = parseInt(
-  process.env.MAX_FEEDS_PER_USER ?? "50",
-  10
-);
 
 // ---------------------------------------------------------------------------
 // POST /api/feeds/import
