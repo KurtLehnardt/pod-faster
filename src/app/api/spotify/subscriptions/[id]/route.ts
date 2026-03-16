@@ -46,10 +46,22 @@ export async function PATCH(
 
   // 3. Update preference
   try {
-    await updateSubscriptionPreference(user.id, id, summarization_enabled);
+    const updated = await updateSubscriptionPreference(
+      user.id,
+      id,
+      summarization_enabled
+    );
+    if (!updated) {
+      return NextResponse.json(
+        { error: "Subscription not found" },
+        { status: 404 }
+      );
+    }
     return NextResponse.json({ updated: true });
   } catch (err) {
-    console.error("Failed to update subscription preference:", err);
+    const message =
+      err instanceof Error ? err.message : "Unknown error";
+    console.error("Failed to update subscription preference:", message);
     return NextResponse.json(
       { error: "Failed to update preference" },
       { status: 500 }

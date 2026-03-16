@@ -214,24 +214,29 @@ export async function getSubscriptions(
 /**
  * Update the summarization_enabled flag for a single subscription.
  * Scoped to the user to prevent cross-user writes.
+ *
+ * @returns true if a row was updated, false if no matching row was found.
  */
 export async function updateSubscriptionPreference(
   userId: string,
   subscriptionId: string,
   summarizationEnabled: boolean
-): Promise<void> {
+): Promise<boolean> {
   const supabase = createAdminClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("spotify_subscriptions")
     .update({ summarization_enabled: summarizationEnabled })
     .eq("id", subscriptionId)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .select("id");
 
   if (error) {
     throw new Error(
       `Failed to update preference for ${subscriptionId}: ${error.message}`
     );
   }
+
+  return (data?.length ?? 0) > 0;
 }
 
 /**
