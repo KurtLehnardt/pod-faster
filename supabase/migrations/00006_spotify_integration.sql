@@ -1,5 +1,5 @@
 -- =============================================================================
--- Migration: 00005_spotify_integration
+-- Migration: 00006_spotify_integration
 -- Description: Add tables for Spotify OAuth tokens and podcast subscriptions
 -- =============================================================================
 
