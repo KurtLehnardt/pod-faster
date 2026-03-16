@@ -8,7 +8,10 @@
  *  - IPv6 private ranges (::1, fc00::/7)
  *  - Private/internal hostnames (localhost, *.local, *.internal, 0.0.0.0, [::1])
  *  - URLs exceeding 2048 characters
+ *  - DNS rebinding attacks (resolved IPs checked against private ranges)
  */
+
+import { resolve4, resolve6 } from "dns/promises";
 
 const MAX_URL_LENGTH = 2048;
 
@@ -162,4 +165,88 @@ export function validateFeedUrl(url: string): UrlValidationResult {
  */
 export function isAllowedUrl(url: string): boolean {
   return validateFeedUrl(url).valid;
+}
+
+/**
+ * Validates a URL by resolving its hostname via DNS and checking the resolved
+ * IP addresses against private/reserved ranges.
+ *
+ * This prevents DNS rebinding attacks where a hostname initially resolves to
+ * a public IP (passing validateFeedUrl) but later rebinds to a private IP
+ * when the actual request is made.
+ *
+ * Call this immediately before fetching a URL, after validateFeedUrl().
+ * Returns a validation result; on failure the URL must not be fetched.
+ */
+export async function validateResolvedUrl(
+  url: string,
+): Promise<UrlValidationResult> {
+  // Run the static checks first
+  const staticResult = validateFeedUrl(url);
+  if (!staticResult.valid) return staticResult;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { valid: false, error: "Invalid URL format" };
+  }
+
+  const hostname = parsed.hostname;
+
+  // If the hostname is already a raw IPv4 or IPv6 literal, the static check
+  // already validated it — no DNS resolution needed.
+  if (isPrivateIPv4(hostname) || isPrivateIPv6(hostname)) {
+    return { valid: false, error: "URLs pointing to private IP addresses are not allowed" };
+  }
+
+  // Skip DNS resolution for IP-literal hostnames (already checked above).
+  const isIpv4Literal = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
+  const isIpv6Literal = hostname.startsWith("[");
+  if (isIpv4Literal || isIpv6Literal) {
+    return { valid: true };
+  }
+
+  // Resolve DNS and check all returned IPs
+  try {
+    const [ipv4Addresses, ipv6Addresses] = await Promise.allSettled([
+      resolve4(hostname),
+      resolve6(hostname),
+    ]);
+
+    const resolvedIps: string[] = [];
+
+    if (ipv4Addresses.status === "fulfilled") {
+      resolvedIps.push(...ipv4Addresses.value);
+    }
+    if (ipv6Addresses.status === "fulfilled") {
+      resolvedIps.push(...ipv6Addresses.value);
+    }
+
+    // If we couldn't resolve any IPs, allow the request to proceed —
+    // the fetch will fail naturally with a DNS error.
+    if (resolvedIps.length === 0) {
+      return { valid: true };
+    }
+
+    for (const ip of resolvedIps) {
+      if (isPrivateIPv4(ip)) {
+        return {
+          valid: false,
+          error: `DNS resolved to private IPv4 address (${ip}). Possible DNS rebinding attack.`,
+        };
+      }
+      if (isPrivateIPv6(ip)) {
+        return {
+          valid: false,
+          error: `DNS resolved to private IPv6 address (${ip}). Possible DNS rebinding attack.`,
+        };
+      }
+    }
+
+    return { valid: true };
+  } catch {
+    // DNS resolution failed — allow the request; the fetch will fail naturally.
+    return { valid: true };
+  }
 }

@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
       for (const ep of result.newEpisodes) {
         // Try to extract a free transcript
         let transcript: string | null = null;
-        let transcriptSource: "rss_description" | "podcast_index" | null =
+        let transcriptSource: "rss_transcript" | "rss_description" | "podcast_index" | null =
           null;
 
         try {

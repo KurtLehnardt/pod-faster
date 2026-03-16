@@ -11,6 +11,7 @@ import type { Json } from "./database.types";
 export type Cadence = "daily" | "twice_weekly" | "weekly" | "on_new_episodes";
 
 export type TranscriptSource =
+  | "rss_transcript"
   | "rss_description"
   | "podcast_index"
   | "elevenlabs_stt"

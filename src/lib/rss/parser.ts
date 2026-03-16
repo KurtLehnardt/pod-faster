@@ -7,7 +7,8 @@
  */
 
 import RssParser from "rss-parser";
-import { validateFeedUrl } from "./url-validator";
+import { parseStringPromise } from "xml2js";
+import { validateFeedUrl, validateResolvedUrl } from "./url-validator";
 import { createHash } from "crypto";
 
 // ── Public Types ──────────────────────────────────────────────
@@ -57,7 +58,71 @@ const rssParser = new RssParser<PodcastCustomFeed, PodcastCustomItem>({
   timeout: 15_000,
 });
 
+// ── Constants ────────────────────────────────────────────────
+
+const FEED_FETCH_TIMEOUT_MS = 15_000;
+const MAX_FEED_REDIRECTS = 5;
+
 // ── parseFeed ────────────────────────────────────────────────
+
+/**
+ * Fetch XML from a feed URL with redirect-safe SSRF protection, then parse it.
+ *
+ * Instead of rssParser.parseURL() (which follows redirects automatically and
+ * could be redirected to an internal IP), we fetch the XML manually with
+ * `redirect: "manual"`, validate each redirect location, and then use
+ * rssParser.parseString().
+ */
+async function fetchFeedXml(feedUrl: string): Promise<string> {
+  let currentUrl = feedUrl;
+
+  for (let i = 0; i <= MAX_FEED_REDIRECTS; i++) {
+    // Validate resolved DNS before each fetch to prevent DNS rebinding
+    const dnsCheck = await validateResolvedUrl(currentUrl);
+    if (!dnsCheck.valid) {
+      throw new Error(`Feed URL failed DNS validation: ${dnsCheck.error}`);
+    }
+
+    const response = await fetch(currentUrl, {
+      signal: AbortSignal.timeout(FEED_FETCH_TIMEOUT_MS),
+      headers: {
+        Accept: "application/rss+xml, application/xml, text/xml, */*",
+        "User-Agent": "pod-faster/1.0",
+      },
+      redirect: "manual",
+    });
+
+    // Handle 3xx redirects manually
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location) {
+        throw new Error("Redirect without Location header");
+      }
+
+      // Resolve relative redirects against current URL
+      const resolved = new URL(location, currentUrl).toString();
+
+      // Validate redirect target against SSRF rules
+      const redirectValidation = validateFeedUrl(resolved);
+      if (!redirectValidation.valid) {
+        throw new Error(
+          `Redirect target blocked by SSRF protection: ${redirectValidation.error}`
+        );
+      }
+
+      currentUrl = resolved;
+      continue;
+    }
+
+    if (!response.ok) {
+      throw new Error(`Feed fetch failed: ${response.status} ${response.statusText}`);
+    }
+
+    return await response.text();
+  }
+
+  throw new Error("Too many redirects while fetching feed");
+}
 
 /**
  * Parse a single RSS/Atom feed URL and return feed metadata + episodes.
@@ -69,7 +134,9 @@ export async function parseFeed(feedUrl: string): Promise<ParsedFeed> {
     throw new Error(`Invalid feed URL: ${validation.error}`);
   }
 
-  const feed = await rssParser.parseURL(feedUrl);
+  // Fetch XML with SSRF-safe redirect handling, then parse the string
+  const xml = await fetchFeedXml(feedUrl);
+  const feed = await rssParser.parseString(xml);
 
   const episodes: ParsedEpisode[] = feed.items.map((item) =>
     mapItem(item)
@@ -107,6 +174,9 @@ export async function parseFeedFromString(xml: string): Promise<ParsedFeed> {
  * Parse OPML content (XML string) into a flat list of feed URLs with titles.
  * Handles nested folder groups by recursively extracting <outline> elements.
  * Rejects OPML content exceeding 1 MB.
+ *
+ * Uses xml2js (available via rss-parser's dependency tree) for proper XML
+ * parsing instead of fragile regex matching.
  */
 export async function parseOpml(opmlContent: string): Promise<OpmlFeed[]> {
   if (opmlContent.length > OPML_MAX_SIZE_BYTES) {
@@ -115,29 +185,53 @@ export async function parseOpml(opmlContent: string): Promise<OpmlFeed[]> {
     );
   }
 
-  // Simple regex-based XML parsing for OPML outlines.
-  // OPML is a simple format: <outline> elements with xmlUrl attributes are feeds.
+  const parsed = await parseStringPromise(opmlContent, {
+    explicitArray: true,
+    mergeAttrs: false,
+    normalizeTags: false,
+  });
+
   const feeds: OpmlFeed[] = [];
-  const outlineRegex = /<outline\s[^>]*>/gi;
-  let match: RegExpExecArray | null;
 
-  while ((match = outlineRegex.exec(opmlContent)) !== null) {
-    const tag = match[0];
-    const xmlUrl = extractAttribute(tag, "xmlUrl") ?? extractAttribute(tag, "xmlurl");
-    if (!xmlUrl) continue; // This is a folder, not a feed
+  // Walk the outline tree recursively.
+  // OPML structure: opml > body > outline (may be nested for folder groups).
+  function walkOutlines(outlines: OpmlOutline[]): void {
+    for (const outline of outlines) {
+      const attrs = outline.$ ?? {};
+      const xmlUrl = attrs.xmlUrl ?? attrs.xmlurl ?? attrs.XMLURL;
 
-    const validation = validateFeedUrl(xmlUrl);
-    if (!validation.valid) continue; // Skip invalid URLs silently
+      if (xmlUrl) {
+        // This is a feed outline
+        const validation = validateFeedUrl(xmlUrl);
+        if (!validation.valid) continue; // Skip invalid URLs silently
 
-    const title =
-      extractAttribute(tag, "text") ??
-      extractAttribute(tag, "title") ??
-      null;
+        const title = attrs.text ?? attrs.title ?? null;
+        feeds.push({ title, feedUrl: xmlUrl });
+      }
 
-    feeds.push({ title, feedUrl: xmlUrl });
+      // Recurse into nested outlines (folder groups)
+      if (outline.outline) {
+        walkOutlines(outline.outline);
+      }
+    }
+  }
+
+  const body = parsed?.opml?.body;
+  if (body && Array.isArray(body)) {
+    for (const bodyEl of body) {
+      if (bodyEl.outline && Array.isArray(bodyEl.outline)) {
+        walkOutlines(bodyEl.outline);
+      }
+    }
   }
 
   return feeds;
+}
+
+/** Shape of an OPML <outline> element as parsed by xml2js. */
+interface OpmlOutline {
+  $?: Record<string, string>;
+  outline?: OpmlOutline[];
 }
 
 // ── Internal helpers ─────────────────────────────────────────
@@ -244,22 +338,3 @@ function extractTranscriptUrl(item: FeedItem): string | null {
   return null;
 }
 
-/**
- * Extract an XML attribute value from a tag string.
- * Handles both single and double quotes.
- */
-function extractAttribute(tag: string, name: string): string | undefined {
-  // Case-insensitive attribute matching
-  const regex = new RegExp(`${name}\\s*=\\s*["']([^"']*)["']`, "i");
-  const match = regex.exec(tag);
-  return match?.[1] ? decodeXmlEntities(match[1]) : undefined;
-}
-
-function decodeXmlEntities(str: string): string {
-  return str
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
-}

@@ -8,7 +8,9 @@
  * 4. null if nothing found
  */
 
-import { validateFeedUrl } from "./url-validator";
+import { validateFeedUrl, validateResolvedUrl } from "./url-validator";
+import { createHash } from "crypto";
+import { MAX_TRANSCRIPT_BYTES } from "@/lib/utils/constants";
 
 // ── Public Types ──────────────────────────────────────────────
 
@@ -21,13 +23,15 @@ export interface TranscriptParams {
 
 export interface TranscriptResult {
   transcript: string | null;
-  source: "rss_description" | "podcast_index" | null;
+  /** "rss_transcript" = fetched from podcast:transcript URL,
+   *  "rss_description" = episode description fallback,
+   *  "podcast_index" = looked up via PodcastIndex API. */
+  source: "rss_transcript" | "rss_description" | "podcast_index" | null;
   truncated: boolean;
 }
 
 // ── Constants ────────────────────────────────────────────────
 
-const MAX_TRANSCRIPT_BYTES = 512_000; // 500 KB
 const MIN_DESCRIPTION_CHARS = 200;
 const PODCAST_INDEX_BASE = "https://api.podcastindex.org/api/1.0";
 const FETCH_TIMEOUT_MS = 15_000;
@@ -63,6 +67,9 @@ export async function extractTranscript(
 
 // ── Internal: Fetch transcript from URL ──────────────────────
 
+/** Maximum number of redirects to follow manually. */
+const MAX_REDIRECTS = 5;
+
 async function fetchTranscriptUrl(
   url: string
 ): Promise<TranscriptResult | null> {
@@ -70,21 +77,52 @@ async function fetchTranscriptUrl(
   if (!validation.valid) return null;
 
   try {
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      headers: { Accept: "text/plain, text/vtt, text/srt, */*" },
-    });
+    let currentUrl = url;
 
-    if (!response.ok) return null;
+    // Follow redirects manually so we can validate each Location target
+    // against SSRF rules before following.
+    for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount++) {
+      // Validate resolved DNS before each fetch to prevent DNS rebinding
+      const dnsCheck = await validateResolvedUrl(currentUrl);
+      if (!dnsCheck.valid) return null;
 
-    const text = await response.text();
-    if (!text || text.trim().length === 0) return null;
+      const response = await fetch(currentUrl, {
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        headers: { Accept: "text/plain, text/vtt, text/srt, */*" },
+        redirect: "manual",
+      });
 
-    // Parse SRT/VTT to plain text, or use as-is
-    const plain = parseSrtVtt(text);
-    // Use "rss_description" as the closest source type for transcript URL
-    // (the DB enum doesn't have a dedicated "rss_transcript_url" value)
-    return truncateResult(plain, "rss_description");
+      // Handle 3xx redirects manually
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location");
+        if (!location) return null;
+
+        // Resolve relative redirects against the current URL
+        const resolved = new URL(location, currentUrl).toString();
+
+        // Validate the redirect target against SSRF rules
+        const redirectValidation = validateFeedUrl(resolved);
+        if (!redirectValidation.valid) return null;
+
+        currentUrl = resolved;
+        continue;
+      }
+
+      if (!response.ok) return null;
+
+      const text = await response.text();
+      if (!text || text.trim().length === 0) return null;
+
+      // Parse SRT/VTT to plain text, or use as-is
+      const plain = parseSrtVtt(text);
+      // Source: "rss_transcript" — transcript fetched from an RSS podcast:transcript URL.
+      // This is distinct from "rss_description" (episode description fallback).
+      // NOTE: The "rss_transcript" enum value is being added by the migration team.
+      return truncateResult(plain, "rss_transcript");
+    }
+
+    // Exceeded max redirects
+    return null;
   } catch {
     return null;
   }
@@ -109,11 +147,17 @@ async function tryPodcastIndex(
       ? `${PODCAST_INDEX_BASE}/episodes/byfeedurl?url=${encodeURIComponent(audioUrl)}`
       : `${PODCAST_INDEX_BASE}/search/byterm?q=${query}`;
 
+    // PodcastIndex requires HMAC SHA-1 auth: sha1(apiKey + apiSecret + authDate)
+    const authHash = createHash("sha1")
+      .update(apiKey + apiSecret + authDate)
+      .digest("hex");
+
     const response = await fetch(url, {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       headers: {
         "X-Auth-Key": apiKey,
         "X-Auth-Date": authDate,
+        Authorization: authHash,
         "User-Agent": "pod-faster/1.0",
         Accept: "application/json",
       },
@@ -202,7 +246,7 @@ function stripHtml(html: string): string {
 
 function truncateResult(
   text: string,
-  source: "rss_description" | "podcast_index"
+  source: "rss_transcript" | "rss_description" | "podcast_index"
 ): TranscriptResult {
   const truncated = text.length > MAX_TRANSCRIPT_BYTES;
   return {
