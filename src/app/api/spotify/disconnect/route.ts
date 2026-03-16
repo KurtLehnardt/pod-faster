@@ -41,7 +41,10 @@ export async function DELETE(request: NextRequest) {
   try {
     await deleteTokens(user.id);
   } catch (err) {
-    console.error("Failed to delete Spotify tokens:", err);
+    console.error(
+      "Failed to delete Spotify tokens:",
+      err instanceof Error ? err.message : "Unknown error"
+    );
     return NextResponse.json(
       { error: "Failed to disconnect" },
       { status: 500 }
@@ -55,7 +58,10 @@ export async function DELETE(request: NextRequest) {
     try {
       await removeAllSubscriptions(user.id);
     } catch (err) {
-      console.error("Failed to remove subscriptions:", err);
+      console.error(
+        "Failed to remove subscriptions:",
+        err instanceof Error ? err.message : "Unknown error"
+      );
       // Tokens are already deleted — still report success
     }
   }

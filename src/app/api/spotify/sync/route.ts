@@ -32,7 +32,10 @@ export async function POST() {
         { status: 404 }
       );
     }
-    console.error("Spotify sync failed:", err);
+    console.error(
+      "Spotify sync failed:",
+      err instanceof Error ? err.message : "Unknown error"
+    );
     return NextResponse.json(
       { error: "Sync failed" },
       { status: 500 }

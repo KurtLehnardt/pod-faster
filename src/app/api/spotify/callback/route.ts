@@ -88,7 +88,10 @@ export async function GET(request: NextRequest) {
     });
     return response;
   } catch (err) {
-    console.error("Spotify OAuth callback failed:", err);
+    console.error(
+      "Spotify OAuth callback failed:",
+      err instanceof Error ? err.message : "Unknown error"
+    );
     return NextResponse.redirect(
       `${appUrl}/settings?spotify=error&reason=exchange_failed`
     );

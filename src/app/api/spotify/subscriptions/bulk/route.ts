@@ -79,7 +79,10 @@ export async function PATCH(request: NextRequest) {
     await bulkUpdatePreferences(user.id, typedUpdates);
     return NextResponse.json({ updated: typedUpdates.length });
   } catch (err) {
-    console.error("Failed to bulk update preferences:", err);
+    console.error(
+      "Failed to bulk update preferences:",
+      err instanceof Error ? err.message : "Unknown error"
+    );
     return NextResponse.json(
       { error: "Failed to bulk update preferences" },
       { status: 500 }

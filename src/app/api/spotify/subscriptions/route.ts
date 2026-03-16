@@ -31,7 +31,10 @@ export async function GET(request: NextRequest) {
     const subscriptions = await getSubscriptions(user.id, { includeRemoved });
     return NextResponse.json({ subscriptions });
   } catch (err) {
-    console.error("Failed to fetch subscriptions:", err);
+    console.error(
+      "Failed to fetch subscriptions:",
+      err instanceof Error ? err.message : "Unknown error"
+    );
     return NextResponse.json(
       { error: "Failed to fetch subscriptions" },
       { status: 500 }

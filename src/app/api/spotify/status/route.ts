@@ -27,7 +27,10 @@ export async function GET() {
     const status = await getConnectionStatus(user.id);
     return NextResponse.json(status);
   } catch (err) {
-    console.error("Failed to get Spotify status:", err);
+    console.error(
+      "Failed to get Spotify status:",
+      err instanceof Error ? err.message : "Unknown error"
+    );
     return NextResponse.json(
       { error: "Failed to get connection status" },
       { status: 500 }
