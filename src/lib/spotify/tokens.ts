@@ -231,32 +231,32 @@ export async function getConnectionStatus(
     return { connected: false };
   }
 
-  // Count active subscriptions
-  const { count, error: countError } = await supabase
-    .from("spotify_subscriptions")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("is_removed", false);
+  // Count active subscriptions and get latest sync in parallel
+  const [countResult, syncResult] = await Promise.all([
+    supabase
+      .from("spotify_subscriptions")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("is_removed", false),
+    supabase
+      .from("spotify_subscriptions")
+      .select("synced_at")
+      .eq("user_id", userId)
+      .eq("is_removed", false)
+      .order("synced_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
-  if (countError) {
+  if (countResult.error) {
     throw new Error(
-      `Failed to count subscriptions: ${countError.message}`
+      `Failed to count subscriptions: ${countResult.error.message}`
     );
   }
 
-  // Get latest synced_at
-  const { data: latestSync, error: syncError } = await supabase
-    .from("spotify_subscriptions")
-    .select("synced_at")
-    .eq("user_id", userId)
-    .eq("is_removed", false)
-    .order("synced_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (syncError) {
+  if (syncResult.error) {
     throw new Error(
-      `Failed to fetch latest sync: ${syncError.message}`
+      `Failed to fetch latest sync: ${syncResult.error.message}`
     );
   }
 
@@ -264,7 +264,7 @@ export async function getConnectionStatus(
     connected: true,
     spotify_user_id: tokenRow.spotify_user_id,
     spotify_display_name: tokenRow.spotify_display_name,
-    last_synced_at: latestSync?.synced_at ?? null,
-    subscription_count: count ?? 0,
+    last_synced_at: syncResult.data?.synced_at ?? null,
+    subscription_count: countResult.count ?? 0,
   };
 }
