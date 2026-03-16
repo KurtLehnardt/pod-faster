@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Plus, RefreshCw, Loader2 } from "lucide-react";
+import { Plus, RefreshCw, Loader2, Podcast } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FeedList } from "@/components/feeds/feed-list";
 import { ImportDialog } from "@/components/feeds/import-dialog";
+import { EpisodeConfig } from "@/components/episodes/episode-config";
 import { useFeeds, usePollFeed } from "@/lib/hooks/use-feeds";
 
 type FeedFilter = "all" | "active" | "paused" | "error";
@@ -20,6 +21,7 @@ export default function FeedsPage() {
   const { feeds, loading, error, refresh } = useFeeds();
   const { poll, loading: polling } = usePollFeed();
   const [importOpen, setImportOpen] = useState(false);
+  const [episodeDialogOpen, setEpisodeDialogOpen] = useState(false);
   const [filter, setFilter] = useState<FeedFilter>("all");
 
   const filteredFeeds = useMemo(() => {
@@ -61,6 +63,14 @@ export default function FeedsPage() {
             <Plus className="mr-2 size-4" />
             Import Feeds
           </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setEpisodeDialogOpen(true)}
+          >
+            <Podcast className="mr-2 size-4" />
+            New Episode
+          </Button>
         </div>
       </div>
 
@@ -89,6 +99,11 @@ export default function FeedsPage() {
         open={importOpen}
         onOpenChange={setImportOpen}
         onSuccess={refresh}
+      />
+
+      <EpisodeConfig
+        open={episodeDialogOpen}
+        onOpenChange={setEpisodeDialogOpen}
       />
     </div>
   );
