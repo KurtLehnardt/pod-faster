@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
   const config = rawConfig as unknown as SummaryConfig;
 
   // Insert summary_config_feeds rows
-  const feedRows = feedIds.map((feedId) => ({
+  const feedRows = feedIds.map((feedId: string) => ({
     summary_config_id: config.id,
     feed_id: feedId,
     is_included: true,

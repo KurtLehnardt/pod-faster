@@ -6,6 +6,7 @@ import {
   Headphones,
   LogOut,
   MessageSquare,
+  Rss,
   Settings,
   Tag,
 } from "lucide-react";
@@ -17,6 +18,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/episodes", label: "Episodes", icon: Headphones },
+  { href: "/feeds", label: "Feeds", icon: Rss },
   { href: "/topics", label: "Topics", icon: Tag },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;

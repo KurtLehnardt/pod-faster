@@ -184,7 +184,7 @@ export async function PUT(
     }
 
     // Insert new links
-    const feedRows = feedIds.map((feedId) => ({
+    const feedRows = feedIds.map((feedId: string) => ({
       summary_config_id: id,
       feed_id: feedId,
       is_included: true,
