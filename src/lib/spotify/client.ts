@@ -247,21 +247,16 @@ export async function refreshAccessToken(
 }
 
 /**
- * Revoke an access token (best-effort -- errors are silently ignored).
+ * Revoke an access token (no-op).
+ *
+ * Spotify does not provide a token revocation endpoint (RFC 7009).
+ * See: https://github.com/spotify/web-api/issues/600
+ *
+ * Tokens are invalidated by deleting them from our database.
+ * The access token will expire naturally (typically within 1 hour).
+ * Users can also manually revoke app access via their Spotify account settings.
  */
-export async function revokeToken(accessToken: string): Promise<void> {
-  try {
-    const body = new URLSearchParams({
-      token: accessToken,
-      token_type_hint: "access_token",
-    });
-
-    await fetch(TOKEN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: body.toString(),
-    });
-  } catch {
-    // Best-effort revocation -- ignore errors
-  }
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function revokeToken(_accessToken: string): Promise<void> {
+  // Intentional no-op — Spotify has no revocation API.
 }
