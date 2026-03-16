@@ -75,15 +75,15 @@ CREATE POLICY "Service role manages spotify subscriptions"
 CREATE INDEX idx_spotify_subscriptions_user_id
   ON public.spotify_subscriptions (user_id);
 
-CREATE INDEX idx_spotify_subscriptions_user_show
-  ON public.spotify_subscriptions (user_id, spotify_show_id);
+-- idx_spotify_subscriptions_user_show removed: already created by
+-- UNIQUE constraint spotify_subscriptions_user_show_unique
 
 CREATE INDEX idx_spotify_subscriptions_user_active
   ON public.spotify_subscriptions (user_id)
   WHERE is_removed = false;
 
-CREATE INDEX idx_spotify_tokens_user_id
-  ON public.spotify_tokens (user_id);
+-- idx_spotify_tokens_user_id removed: already created by
+-- UNIQUE constraint spotify_tokens_user_id_unique
 
 -- ---------------------------------------------------------------------------
 -- Trigger: auto-update updated_at on spotify_tokens
