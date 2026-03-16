@@ -56,10 +56,15 @@ export interface UseVoiceInputReturn {
 }
 
 export function useVoiceInput(): UseVoiceInputReturn {
-  const [isSupported] = useState(() => getSpeechRecognition() !== null);
+  const [isSupported, setIsSupported] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState("");
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+
+  // Check browser support after mount to avoid hydration mismatch
+  useEffect(() => {
+    setIsSupported(getSpeechRecognition() !== null);
+  }, []);
 
   // Clean up on unmount
   useEffect(() => {
