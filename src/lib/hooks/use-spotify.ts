@@ -17,6 +17,7 @@ export interface UseSpotifyReturn {
   // Subscriptions
   subscriptions: SpotifySubscription[];
   isLoadingSubscriptions: boolean;
+  subscriptionError: string | null;
 
   // Sync
   isSyncing: boolean;
@@ -34,23 +35,21 @@ export function useSpotify(): UseSpotifyReturn {
   const [isLoadingStatus, setIsLoadingStatus] = useState(true);
   const [subscriptions, setSubscriptions] = useState<SpotifySubscription[]>([]);
   const [isLoadingSubscriptions, setIsLoadingSubscriptions] = useState(false);
+  const [subscriptionError, setSubscriptionError] = useState<string | null>(
+    null
+  );
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
-  // Fetch status on mount
-  useEffect(() => {
-    fetchStatus();
-  }, []);
-
-  // Fetch subscriptions when connected
-  useEffect(() => {
-    if (status?.connected) fetchSubscriptions();
-  }, [status?.connected]);
-
-  async function fetchStatus() {
+  // Memoize fetch helpers so they can be used as stable dependencies
+  const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/spotify/status");
+      if (!res.ok) {
+        setStatus({ connected: false });
+        return;
+      }
       const data = await res.json();
       setStatus(data);
     } catch {
@@ -58,31 +57,54 @@ export function useSpotify(): UseSpotifyReturn {
     } finally {
       setIsLoadingStatus(false);
     }
-  }
+  }, []);
 
-  async function fetchSubscriptions() {
+  const fetchSubscriptions = useCallback(async () => {
     setIsLoadingSubscriptions(true);
+    setSubscriptionError(null);
     try {
       const res = await fetch("/api/spotify/subscriptions");
+      if (!res.ok) {
+        throw new Error(`Failed to fetch subscriptions (${res.status})`);
+      }
       const data = await res.json();
       setSubscriptions(data.subscriptions ?? []);
-    } catch {
-      // silently fail
+    } catch (err) {
+      setSubscriptionError(
+        err instanceof Error ? err.message : "Failed to fetch subscriptions"
+      );
     } finally {
       setIsLoadingSubscriptions(false);
     }
-  }
+  }, []);
+
+  // Fetch status on mount
+  useEffect(() => {
+    fetchStatus();
+  }, [fetchStatus]);
+
+  // Fetch subscriptions when connected
+  useEffect(() => {
+    if (status?.connected) fetchSubscriptions();
+  }, [status?.connected, fetchSubscriptions]);
 
   const connect = useCallback(async () => {
     const res = await fetch("/api/spotify/connect", { method: "POST" });
+    if (!res.ok) {
+      throw new Error(`Failed to initiate Spotify connection (${res.status})`);
+    }
     const data = await res.json();
     if (data.url) window.location.href = data.url;
   }, []);
 
   const disconnect = useCallback(async (removeData = false) => {
-    await fetch(`/api/spotify/disconnect?remove_data=${removeData}`, {
-      method: "DELETE",
-    });
+    const res = await fetch(
+      `/api/spotify/disconnect?remove_data=${removeData}`,
+      { method: "DELETE" }
+    );
+    if (!res.ok) {
+      throw new Error(`Failed to disconnect Spotify (${res.status})`);
+    }
     setStatus({ connected: false });
     setSubscriptions([]);
     setSyncResult(null);
@@ -104,7 +126,7 @@ export function useSpotify(): UseSpotifyReturn {
     } finally {
       setIsSyncing(false);
     }
-  }, []);
+  }, [fetchSubscriptions, fetchStatus]);
 
   const toggleSubscription = useCallback(
     async (id: string, enabled: boolean) => {
@@ -151,7 +173,7 @@ export function useSpotify(): UseSpotifyReturn {
         await fetchSubscriptions(); // Revert on failure
       }
     },
-    [subscriptions]
+    [subscriptions, fetchSubscriptions]
   );
 
   return {
@@ -161,6 +183,7 @@ export function useSpotify(): UseSpotifyReturn {
     disconnect,
     subscriptions,
     isLoadingSubscriptions,
+    subscriptionError,
     isSyncing,
     syncResult,
     syncError,
