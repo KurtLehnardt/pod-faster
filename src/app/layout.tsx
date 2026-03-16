@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
-import { DevIndicatorToast } from "@/components/dev-indicator-toast";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -31,7 +30,6 @@ export default function RootLayout({
       >
         {children}
         <Toaster />
-        {process.env.NODE_ENV === "development" && <DevIndicatorToast />}
       </body>
     </html>
   );

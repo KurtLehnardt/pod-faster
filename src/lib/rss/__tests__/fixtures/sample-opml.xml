@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>My Podcast Subscriptions</title>
+  </head>
+  <body>
+    <outline text="Technology" title="Technology">
+      <outline text="Tech Talk Daily" title="Tech Talk Daily" type="rss" xmlUrl="https://feeds.example.com/techtalk.xml" htmlUrl="https://techtalkdaily.example.com"/>
+      <outline text="Code Review Show" title="Code Review Show" type="rss" xmlUrl="https://feeds.example.com/codereview.xml" htmlUrl="https://codereview.example.com"/>
+      <outline text="DevOps Weekly" title="DevOps Weekly" type="rss" xmlUrl="https://feeds.example.com/devops.xml" htmlUrl="https://devops.example.com"/>
+      <outline text="AI Frontiers" title="AI Frontiers" type="rss" xmlUrl="https://feeds.example.com/aifrontiers.xml" htmlUrl="https://aifrontiers.example.com"/>
+      <outline text="Security Bytes" title="Security Bytes" type="rss" xmlUrl="https://feeds.example.com/securitybytes.xml" htmlUrl="https://securitybytes.example.com"/>
+    </outline>
+    <outline text="Science" title="Science">
+      <outline text="Science Weekly" title="Science Weekly" type="rss" xmlUrl="https://feeds.example.com/scienceweekly.xml" htmlUrl="https://scienceweekly.example.com"/>
+      <outline text="Nature Podcast" title="Nature Podcast" type="rss" xmlUrl="https://feeds.example.com/nature.xml" htmlUrl="https://nature.example.com"/>
+      <outline text="Space Explorers" title="Space Explorers" type="rss" xmlUrl="https://feeds.example.com/space.xml" htmlUrl="https://space.example.com"/>
+      <outline text="Climate Report" title="Climate Report" type="rss" xmlUrl="https://feeds.example.com/climate.xml" htmlUrl="https://climate.example.com"/>
+      <outline text="Lab Notes" title="Lab Notes" type="rss" xmlUrl="https://feeds.example.com/labnotes.xml" htmlUrl="https://labnotes.example.com"/>
+    </outline>
+  </body>
+</opml>

@@ -1,7 +1,7 @@
 /**
  * TypeScript types generated from the pod-faster Supabase schema.
  * Based on migrations: 00001_initial_schema, 00002_rls_policies,
- * 00003_indexes, 00004_storage.
+ * 00003_indexes, 00004_storage, 00005_feed_importer.
  */
 
 export type Json =
@@ -22,6 +22,8 @@ export type EpisodeStatus =
   | "completed"
   | "failed";
 
+export type EpisodeSourceType = "topic" | "feed_summary";
+
 export type PodcastStyle = "monologue" | "interview" | "group_chat";
 
 export type PodcastTone =
@@ -33,6 +35,28 @@ export type PodcastTone =
 export type VoiceRole = "narrator" | "host" | "expert" | "guest" | "co_host";
 
 export type ChatRole = "user" | "assistant";
+
+export type Cadence = "daily" | "twice_weekly" | "weekly" | "on_new_episodes";
+
+export type TranscriptSource =
+  | "rss_description"
+  | "rss_transcript"
+  | "podcast_index"
+  | "elevenlabs_stt"
+  | "manual";
+
+export type TranscriptionStatus =
+  | "none"
+  | "pending"
+  | "processing"
+  | "completed"
+  | "failed";
+
+export type SummaryGenerationStatus =
+  | "pending"
+  | "processing"
+  | "completed"
+  | "failed";
 
 export interface Database {
   public: {
@@ -127,6 +151,8 @@ export interface Database {
           voice_config: Json | null;
           claude_tokens_used: number;
           elevenlabs_characters_used: number;
+          source_type: EpisodeSourceType;
+          summary_config_id: string | null;
           created_at: string;
           completed_at: string | null;
         };
@@ -148,6 +174,8 @@ export interface Database {
           voice_config?: Json | null;
           claude_tokens_used?: number;
           elevenlabs_characters_used?: number;
+          source_type?: EpisodeSourceType;
+          summary_config_id?: string | null;
           created_at?: string;
           completed_at?: string | null;
         };
@@ -169,6 +197,8 @@ export interface Database {
           voice_config?: Json | null;
           claude_tokens_used?: number;
           elevenlabs_characters_used?: number;
+          source_type?: EpisodeSourceType;
+          summary_config_id?: string | null;
           created_at?: string;
           completed_at?: string | null;
         };
@@ -178,6 +208,13 @@ export interface Database {
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "episodes_summary_config_id_fkey";
+            columns: ["summary_config_id"];
+            isOneToOne: false;
+            referencedRelation: "summary_configs";
             referencedColumns: ["id"];
           },
         ];
@@ -261,6 +298,302 @@ export interface Database {
           },
           {
             foreignKeyName: "chat_messages_episode_id_fkey";
+            columns: ["episode_id"];
+            isOneToOne: false;
+            referencedRelation: "episodes";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      podcast_feeds: {
+        Row: {
+          id: string;
+          user_id: string;
+          feed_url: string;
+          title: string | null;
+          description: string | null;
+          image_url: string | null;
+          last_polled_at: string | null;
+          last_episode_at: string | null;
+          is_active: boolean;
+          poll_error: string | null;
+          poll_error_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          feed_url: string;
+          title?: string | null;
+          description?: string | null;
+          image_url?: string | null;
+          last_polled_at?: string | null;
+          last_episode_at?: string | null;
+          is_active?: boolean;
+          poll_error?: string | null;
+          poll_error_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          feed_url?: string;
+          title?: string | null;
+          description?: string | null;
+          image_url?: string | null;
+          last_polled_at?: string | null;
+          last_episode_at?: string | null;
+          is_active?: boolean;
+          poll_error?: string | null;
+          poll_error_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "podcast_feeds_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      feed_episodes: {
+        Row: {
+          id: string;
+          feed_id: string;
+          user_id: string;
+          guid: string;
+          title: string;
+          description: string | null;
+          audio_url: string | null;
+          published_at: string | null;
+          duration_seconds: number | null;
+          transcript: string | null;
+          transcript_source: TranscriptSource | null;
+          transcription_status: TranscriptionStatus;
+          transcription_error: string | null;
+          elevenlabs_cost_cents: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          feed_id: string;
+          user_id: string;
+          guid: string;
+          title: string;
+          description?: string | null;
+          audio_url?: string | null;
+          published_at?: string | null;
+          duration_seconds?: number | null;
+          transcript?: string | null;
+          transcript_source?: TranscriptSource | null;
+          transcription_status?: TranscriptionStatus;
+          transcription_error?: string | null;
+          elevenlabs_cost_cents?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          feed_id?: string;
+          user_id?: string;
+          guid?: string;
+          title?: string;
+          description?: string | null;
+          audio_url?: string | null;
+          published_at?: string | null;
+          duration_seconds?: number | null;
+          transcript?: string | null;
+          transcript_source?: TranscriptSource | null;
+          transcription_status?: TranscriptionStatus;
+          transcription_error?: string | null;
+          elevenlabs_cost_cents?: number;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "feed_episodes_feed_id_fkey";
+            columns: ["feed_id"];
+            isOneToOne: false;
+            referencedRelation: "podcast_feeds";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "feed_episodes_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      summary_configs: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          cadence: Cadence;
+          preferred_time: string | null;
+          timezone: string | null;
+          style: PodcastStyle;
+          tone: PodcastTone;
+          length_minutes: number;
+          voice_config: Json | null;
+          is_active: boolean;
+          last_generated_at: string | null;
+          next_due_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name?: string;
+          cadence?: Cadence;
+          preferred_time?: string | null;
+          timezone?: string | null;
+          style?: PodcastStyle;
+          tone?: PodcastTone;
+          length_minutes?: number;
+          voice_config?: Json | null;
+          is_active?: boolean;
+          last_generated_at?: string | null;
+          next_due_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          cadence?: Cadence;
+          preferred_time?: string | null;
+          timezone?: string | null;
+          style?: PodcastStyle;
+          tone?: PodcastTone;
+          length_minutes?: number;
+          voice_config?: Json | null;
+          is_active?: boolean;
+          last_generated_at?: string | null;
+          next_due_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "summary_configs_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      summary_config_feeds: {
+        Row: {
+          summary_config_id: string;
+          feed_id: string;
+          is_included: boolean;
+          auto_excluded: boolean;
+          auto_exclude_reason: string | null;
+        };
+        Insert: {
+          summary_config_id: string;
+          feed_id: string;
+          is_included?: boolean;
+          auto_excluded?: boolean;
+          auto_exclude_reason?: string | null;
+        };
+        Update: {
+          summary_config_id?: string;
+          feed_id?: string;
+          is_included?: boolean;
+          auto_excluded?: boolean;
+          auto_exclude_reason?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "summary_config_feeds_summary_config_id_fkey";
+            columns: ["summary_config_id"];
+            isOneToOne: false;
+            referencedRelation: "summary_configs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "summary_config_feeds_feed_id_fkey";
+            columns: ["feed_id"];
+            isOneToOne: false;
+            referencedRelation: "podcast_feeds";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      summary_generation_log: {
+        Row: {
+          id: string;
+          summary_config_id: string;
+          user_id: string;
+          episode_id: string | null;
+          status: SummaryGenerationStatus;
+          error_message: string | null;
+          feeds_included: number;
+          feeds_excluded: number;
+          episodes_summarized: number;
+          claude_tokens_used: number;
+          elevenlabs_characters_used: number;
+          started_at: string;
+          completed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          summary_config_id: string;
+          user_id: string;
+          episode_id?: string | null;
+          status?: SummaryGenerationStatus;
+          error_message?: string | null;
+          feeds_included?: number;
+          feeds_excluded?: number;
+          episodes_summarized?: number;
+          claude_tokens_used?: number;
+          elevenlabs_characters_used?: number;
+          started_at?: string;
+          completed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          summary_config_id?: string;
+          user_id?: string;
+          episode_id?: string | null;
+          status?: SummaryGenerationStatus;
+          error_message?: string | null;
+          feeds_included?: number;
+          feeds_excluded?: number;
+          episodes_summarized?: number;
+          claude_tokens_used?: number;
+          elevenlabs_characters_used?: number;
+          started_at?: string;
+          completed_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "summary_generation_log_summary_config_id_fkey";
+            columns: ["summary_config_id"];
+            isOneToOne: false;
+            referencedRelation: "summary_configs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "summary_generation_log_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "summary_generation_log_episode_id_fkey";
             columns: ["episode_id"];
             isOneToOne: false;
             referencedRelation: "episodes";

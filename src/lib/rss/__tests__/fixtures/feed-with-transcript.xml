@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <title>Transcript Podcast</title>
+    <description>A podcast with transcript tags on every episode.</description>
+    <link>https://transcriptpodcast.example.com</link>
+    <image>
+      <url>https://transcriptpodcast.example.com/art.jpg</url>
+      <title>Transcript Podcast</title>
+      <link>https://transcriptpodcast.example.com</link>
+    </image>
+    <item>
+      <title>Episode with SRT Transcript</title>
+      <guid>transcript-001</guid>
+      <description>This episode has an SRT transcript.</description>
+      <enclosure url="https://cdn.example.com/transcript001.mp3" length="20000000" type="audio/mpeg"/>
+      <pubDate>Fri, 14 Mar 2026 10:00:00 GMT</pubDate>
+      <itunes:duration>30:00</itunes:duration>
+      <podcast:transcript url="https://cdn.example.com/transcript001.srt" type="application/srt"/>
+    </item>
+    <item>
+      <title>Episode with VTT Transcript</title>
+      <guid>transcript-002</guid>
+      <description>This episode has a VTT transcript.</description>
+      <enclosure url="https://cdn.example.com/transcript002.mp3" length="22000000" type="audio/mpeg"/>
+      <pubDate>Thu, 13 Mar 2026 10:00:00 GMT</pubDate>
+      <itunes:duration>35:00</itunes:duration>
+      <podcast:transcript url="https://cdn.example.com/transcript002.vtt" type="text/vtt"/>
+    </item>
+    <item>
+      <title>Episode Without Transcript</title>
+      <guid>transcript-003</guid>
+      <description>This episode does not have a transcript tag.</description>
+      <enclosure url="https://cdn.example.com/transcript003.mp3" length="18000000" type="audio/mpeg"/>
+      <pubDate>Wed, 12 Mar 2026 10:00:00 GMT</pubDate>
+      <itunes:duration>28:00</itunes:duration>
+    </item>
+  </channel>
+</rss>

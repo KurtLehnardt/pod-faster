@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Tech Talk Daily</title>
+    <description>A daily dive into the latest tech news and trends.</description>
+    <link>https://techtalkdaily.example.com</link>
+    <image>
+      <url>https://techtalkdaily.example.com/artwork.jpg</url>
+      <title>Tech Talk Daily</title>
+      <link>https://techtalkdaily.example.com</link>
+    </image>
+    <itunes:image href="https://techtalkdaily.example.com/itunes-artwork.jpg"/>
+    <item>
+      <title>Episode 5: AI Regulation</title>
+      <guid>ep-005</guid>
+      <description>Exploring the latest developments in AI regulation worldwide.</description>
+      <enclosure url="https://cdn.example.com/ep005.mp3" length="28800000" type="audio/mpeg"/>
+      <pubDate>Fri, 14 Mar 2026 08:00:00 GMT</pubDate>
+      <itunes:duration>01:23:45</itunes:duration>
+    </item>
+    <item>
+      <title>Episode 4: Quantum Computing Update</title>
+      <guid>ep-004</guid>
+      <description>The state of quantum computing in 2026.</description>
+      <enclosure url="https://cdn.example.com/ep004.mp3" length="24000000" type="audio/mpeg"/>
+      <pubDate>Thu, 13 Mar 2026 08:00:00 GMT</pubDate>
+      <itunes:duration>45:32</itunes:duration>
+    </item>
+    <item>
+      <title>Episode 3: Cloud Native Trends</title>
+      <guid>ep-003</guid>
+      <description>What's new in the cloud native ecosystem.</description>
+      <enclosure url="https://cdn.example.com/ep003.mp3" length="19200000" type="audio/mpeg"/>
+      <pubDate>Wed, 12 Mar 2026 08:00:00 GMT</pubDate>
+      <itunes:duration>5432</itunes:duration>
+    </item>
+    <item>
+      <title>Episode 2: The Future of TypeScript</title>
+      <guid>ep-002</guid>
+      <description>TypeScript 6.0 features and the road ahead.</description>
+      <enclosure url="https://cdn.example.com/ep002.mp3" length="21600000" type="audio/mpeg"/>
+      <pubDate>Tue, 11 Mar 2026 08:00:00 GMT</pubDate>
+      <itunes:duration>38:00</itunes:duration>
+    </item>
+    <item>
+      <title>Episode 1: Welcome to Tech Talk Daily</title>
+      <guid>ep-001</guid>
+      <description>Introducing our new podcast about technology.</description>
+      <enclosure url="https://cdn.example.com/ep001.mp3" length="14400000" type="audio/mpeg"/>
+      <pubDate>Mon, 10 Mar 2026 08:00:00 GMT</pubDate>
+      <itunes:duration>25:00</itunes:duration>
+    </item>
+  </channel>
+</rss>
