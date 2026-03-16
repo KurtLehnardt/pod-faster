@@ -1,7 +1,7 @@
 /**
  * TypeScript types generated from the pod-faster Supabase schema.
  * Based on migrations: 00001_initial_schema, 00002_rls_policies,
- * 00003_indexes, 00004_storage, 00005_feed_importer.
+ * 00003_indexes, 00004_storage, 00005_feed_importer, 00006_spotify_integration.
  */
 
 export type Json =
@@ -253,6 +253,109 @@ export interface Database {
         Relationships: [
           {
             foreignKeyName: "voice_presets_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      spotify_tokens: {
+        Row: {
+          id: string;
+          user_id: string;
+          encrypted_access_token: string;
+          encrypted_refresh_token: string;
+          expires_at: string;
+          spotify_user_id: string;
+          spotify_display_name: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          encrypted_access_token: string;
+          encrypted_refresh_token: string;
+          expires_at: string;
+          spotify_user_id: string;
+          spotify_display_name?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          encrypted_access_token?: string;
+          encrypted_refresh_token?: string;
+          expires_at?: string;
+          spotify_user_id?: string;
+          spotify_display_name?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "spotify_tokens_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: true;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      spotify_subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          spotify_show_id: string;
+          show_name: string;
+          publisher: string;
+          description: string;
+          image_url: string | null;
+          spotify_url: string;
+          total_episodes: number;
+          summarization_enabled: boolean;
+          is_removed: boolean;
+          synced_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          spotify_show_id: string;
+          show_name: string;
+          publisher?: string;
+          description?: string;
+          image_url?: string | null;
+          spotify_url?: string;
+          total_episodes?: number;
+          summarization_enabled?: boolean;
+          is_removed?: boolean;
+          synced_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          spotify_show_id?: string;
+          show_name?: string;
+          publisher?: string;
+          description?: string;
+          image_url?: string | null;
+          spotify_url?: string;
+          total_episodes?: number;
+          summarization_enabled?: boolean;
+          is_removed?: boolean;
+          synced_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "spotify_subscriptions_user_id_fkey";
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
