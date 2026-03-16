@@ -20,6 +20,7 @@ import type {
   EpisodeStatus,
   VoiceConfig,
 } from "@/types/episode";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   type GatheredEpisode,
@@ -45,10 +46,10 @@ export interface FeedSummaryPipelineParams {
 // ── Helpers ──────────────────────────────────────────────────
 
 async function updateEpisode(
+  supabase: SupabaseClient,
   episodeId: string,
   data: Record<string, unknown>,
 ): Promise<void> {
-  const supabase = createAdminClient();
   const { error } = await supabase
     .from("episodes")
     .update(data)
@@ -63,16 +64,21 @@ async function updateEpisode(
 }
 
 async function setStatus(
+  supabase: SupabaseClient,
   episodeId: string,
   status: EpisodeStatus,
   extra?: Record<string, unknown>,
 ): Promise<void> {
-  await updateEpisode(episodeId, { status, ...extra });
+  await updateEpisode(supabase, episodeId, { status, ...extra });
 }
 
-async function failEpisode(episodeId: string, error: unknown): Promise<void> {
+async function failEpisode(
+  supabase: SupabaseClient,
+  episodeId: string,
+  error: unknown,
+): Promise<void> {
   const message = error instanceof Error ? error.message : String(error);
-  await setStatus(episodeId, "failed", {
+  await setStatus(supabase, episodeId, "failed", {
     error_message: message.slice(0, 1000),
   });
 }
@@ -85,24 +91,31 @@ export async function runFeedSummaryPipeline(
   const { episodeId, userId, feedIds, style, tone, lengthMinutes, voiceConfig } =
     params;
 
+  // Create a single admin client for the entire pipeline run
+  const supabase = createAdminClient();
   let totalTokens = 0;
 
   try {
-    const supabase = createAdminClient();
-
     // ---- Step 1: GATHER ----
-    // Get feed titles
+    // Verify feeds belong to this user (defense-in-depth; API layer also validates)
     const { data: feeds, error: feedsError } = await supabase
       .from("podcast_feeds")
       .select("id, title")
-      .in("id", feedIds);
+      .in("id", feedIds)
+      .eq("user_id", userId);
 
     if (feedsError) {
       throw new Error(`Failed to query podcast_feeds: ${feedsError.message}`);
     }
 
+    if (!feeds || feeds.length !== feedIds.length) {
+      throw new Error(
+        `Feed ownership mismatch: requested ${feedIds.length} feeds but user owns ${feeds?.length ?? 0} of them`,
+      );
+    }
+
     const feedTitleMap = new Map(
-      (feeds ?? []).map((f) => [f.id, f.title ?? "Unknown Podcast"]),
+      feeds.map((f) => [f.id, f.title ?? "Unknown Podcast"]),
     );
 
     // Query feed_episodes with completed transcripts for the selected feeds
@@ -125,22 +138,20 @@ export async function runFeedSummaryPipeline(
       );
     }
 
-    const gathered: GatheredEpisode[] = episodes
-      .filter((ep) => ep.transcript !== null)
-      .map((ep) => ({
-        episodeId: ep.id,
-        feedId: ep.feed_id,
-        podcastTitle: feedTitleMap.get(ep.feed_id) ?? "Unknown Podcast",
-        episodeTitle: ep.title,
-        transcript: ep.transcript as string,
-        publishedAt: ep.published_at,
-      }));
+    const gathered: GatheredEpisode[] = episodes.map((ep) => ({
+      episodeId: ep.id,
+      feedId: ep.feed_id,
+      podcastTitle: feedTitleMap.get(ep.feed_id) ?? "Unknown Podcast",
+      episodeTitle: ep.title,
+      transcript: ep.transcript as string,
+      publishedAt: ep.published_at,
+    }));
 
     // ---- Step 2: WINDOW ----
     const windowed = windowTranscripts(gathered);
 
     // Update sources on episode with what we're actually using
-    await updateEpisode(episodeId, {
+    await updateEpisode(supabase, episodeId, {
       sources: JSON.parse(
         JSON.stringify(
           windowed.map((ep) => ({
@@ -154,19 +165,19 @@ export async function runFeedSummaryPipeline(
     });
 
     // ---- Step 3: SUMMARIZE ----
-    await setStatus(episodeId, "summarizing");
+    await setStatus(supabase, episodeId, "summarizing");
     const { summary, tokensUsed: summaryTokens } = await summarizeTranscripts(
       windowed,
       lengthMinutes,
     );
     totalTokens += summaryTokens;
-    await updateEpisode(episodeId, {
+    await updateEpisode(supabase, episodeId, {
       summary: summary.topicOverview,
       claude_tokens_used: totalTokens,
     });
 
     // ---- Step 4: SCRIPT ----
-    await setStatus(episodeId, "scripting");
+    await setStatus(supabase, episodeId, "scripting");
     const { script, tokensUsed: scriptTokens } = await scriptStep({
       summary,
       style,
@@ -175,24 +186,24 @@ export async function runFeedSummaryPipeline(
       voiceConfig,
     });
     totalTokens += scriptTokens;
-    await updateEpisode(episodeId, {
+    await updateEpisode(supabase, episodeId, {
       title: script.title,
       script: JSON.parse(JSON.stringify(script)),
       claude_tokens_used: totalTokens,
     });
 
     // ---- Step 5: AUDIO ----
-    await setStatus(episodeId, "generating_audio");
+    await setStatus(supabase, episodeId, "generating_audio");
     const { audio, charactersUsed } = await audioStep({
       script,
       style,
     });
-    await updateEpisode(episodeId, {
+    await updateEpisode(supabase, episodeId, {
       elevenlabs_characters_used: charactersUsed,
     });
 
     // ---- Step 6: UPLOAD ----
-    await setStatus(episodeId, "uploading");
+    await setStatus(supabase, episodeId, "uploading");
     const audioPath = await storageStep({
       audio,
       userId,
@@ -200,12 +211,12 @@ export async function runFeedSummaryPipeline(
     });
 
     // ---- DONE ----
-    await setStatus(episodeId, "completed", {
+    await setStatus(supabase, episodeId, "completed", {
       audio_path: audioPath,
       completed_at: new Date().toISOString(),
     });
   } catch (error) {
     console.error(`[feed-summary-pipeline] Episode ${episodeId} failed:`, error);
-    await failEpisode(episodeId, error);
+    await failEpisode(supabase, episodeId, error);
   }
 }

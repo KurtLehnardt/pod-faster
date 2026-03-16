@@ -23,7 +23,7 @@ const VALID_TONES: EpisodeTone[] = [
 ];
 
 interface CreateEpisodeBody {
-  topicQuery: string;
+  topicQuery?: string;
   style: EpisodeStyle;
   tone: EpisodeTone;
   lengthMinutes?: number;
@@ -36,7 +36,10 @@ function isValidCreateBody(body: unknown): body is CreateEpisodeBody {
   if (typeof body !== "object" || body === null) return false;
   const obj = body as Record<string, unknown>;
 
-  if (typeof obj.topicQuery !== "string" || !obj.topicQuery.trim()) return false;
+  // topicQuery is required for topic episodes but optional for feed_summary
+  if (obj.sourceType !== "feed_summary") {
+    if (typeof obj.topicQuery !== "string" || !obj.topicQuery.trim()) return false;
+  }
   if (!VALID_STYLES.includes(obj.style as EpisodeStyle)) return false;
   if (!VALID_TONES.includes(obj.tone as EpisodeTone)) return false;
 
@@ -59,7 +62,7 @@ function isValidCreateBody(body: unknown): body is CreateEpisodeBody {
   // feedIds required when sourceType is feed_summary
   if (obj.sourceType === "feed_summary") {
     if (!Array.isArray(obj.feedIds) || obj.feedIds.length === 0 || obj.feedIds.length > 50) return false;
-    if (!obj.feedIds.every((id: unknown) => typeof id === "string" && (id as string).trim().length > 0)) return false;
+    if (!obj.feedIds.every((id: unknown) => typeof id === "string" && id.trim().length > 0)) return false;
   }
 
   return true;
@@ -149,7 +152,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { topicQuery, style, tone, lengthMinutes = 5, voiceConfig, sourceType = "topic", feedIds } = body;
+  const { style, tone, lengthMinutes = 5, voiceConfig, sourceType = "topic", feedIds } = body;
+  // Auto-generate topicQuery for feed_summary episodes when not provided
+  const topicQuery = body.topicQuery?.trim() || (sourceType === "feed_summary" ? "Feed summary" : "");
 
   // Validate feedIds ownership — prevent cross-user feed access
   if (sourceType === "feed_summary" && feedIds) {

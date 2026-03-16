@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       tone: string;
       length_minutes: number;
       voice_config: unknown;
-      source_type: string;
+      source_type: "topic" | "feed_summary";
       sources: unknown;
     }>();
 
