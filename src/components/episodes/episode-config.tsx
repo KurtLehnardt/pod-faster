@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Mic, Users, MessageSquare, Loader2 } from "lucide-react";
+import { Mic, Users, MessageSquare, Loader2, Rss, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { VoicePicker, type VoiceAssignment } from "./voice-picker";
 import { GenerationProgress } from "./generation-progress";
+import { useFeeds } from "@/lib/hooks/use-feeds";
 import type { EpisodeStyle, EpisodeTone } from "@/types/episode";
 
 // ---------------------------------------------------------------------------
@@ -71,12 +72,17 @@ interface EpisodeConfigProps {
   onOpenChange?: (open: boolean) => void;
 }
 
+type SourceMode = "topic" | "feeds";
+
 export function EpisodeConfig({
   initialTopic = "",
   trigger,
   open: controlledOpen,
   onOpenChange,
 }: EpisodeConfigProps) {
+  // Source mode state
+  const [sourceMode, setSourceMode] = useState<SourceMode>("topic");
+
   // Form state
   const [topic, setTopic] = useState(initialTopic);
   const [lengthMinutes, setLengthMinutes] = useState(5);
@@ -85,6 +91,13 @@ export function EpisodeConfig({
   const [voiceAssignments, setVoiceAssignments] = useState<VoiceAssignment[]>(
     []
   );
+
+  // Feed selection state (BUG-004 + BUG-008)
+  const [selectedFeedIds, setSelectedFeedIds] = useState<Set<string>>(
+    new Set()
+  );
+  const { feeds } = useFeeds();
+  const activeFeeds = feeds.filter((f) => f.is_active);
 
   // Generation state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -100,11 +113,28 @@ export function EpisodeConfig({
     setTopic(initialTopic);
   }
 
+  function toggleFeed(feedId: string) {
+    setSelectedFeedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(feedId)) {
+        next.delete(feedId);
+      } else {
+        next.add(feedId);
+      }
+      return next;
+    });
+  }
+
   const isGenerating = generatingEpisodeId !== null;
+
   const isFormValid =
-    topic.trim().length > 0 &&
-    voiceAssignments.length > 0 &&
-    voiceAssignments.every((a) => a.voice_id);
+    sourceMode === "topic"
+      ? topic.trim().length > 0 &&
+        voiceAssignments.length > 0 &&
+        voiceAssignments.every((a) => a.voice_id)
+      : selectedFeedIds.size > 0 &&
+        voiceAssignments.length > 0 &&
+        voiceAssignments.every((a) => a.voice_id);
 
   const handleGenerate = useCallback(async () => {
     if (!isFormValid || isSubmitting) return;
@@ -113,12 +143,23 @@ export function EpisodeConfig({
     setSubmitError(null);
 
     try {
+      // Build the topic query based on source mode
+      const effectiveTopic =
+        sourceMode === "feeds"
+          ? "Summary of my latest podcast feeds"
+          : topic.trim();
+
       // Step 1: Create episode
       const createRes = await fetch("/api/episodes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          topicQuery: topic.trim(),
+          topicQuery: effectiveTopic,
+          sourceType: sourceMode === "feeds" ? "feed_summary" : "topic",
+          feedIds:
+            sourceMode === "feeds"
+              ? Array.from(selectedFeedIds)
+              : undefined,
           style,
           tone,
           lengthMinutes,
@@ -160,12 +201,14 @@ export function EpisodeConfig({
     } finally {
       setIsSubmitting(false);
     }
-  }, [isFormValid, isSubmitting, topic, style, tone, lengthMinutes, voiceAssignments]);
+  }, [isFormValid, isSubmitting, sourceMode, topic, selectedFeedIds, style, tone, lengthMinutes, voiceAssignments]);
 
   const handleReset = useCallback(() => {
     setGeneratingEpisodeId(null);
     setSubmitError(null);
+    setSourceMode("topic");
     setTopic(initialTopic);
+    setSelectedFeedIds(new Set());
     setLengthMinutes(5);
     setStyle("monologue");
     setTone("serious");
@@ -200,16 +243,78 @@ export function EpisodeConfig({
       </DialogHeader>
 
       <div className="space-y-5 max-h-[60vh] overflow-y-auto pr-1">
-        {/* Topic */}
-        <div className="space-y-2">
-          <Label htmlFor="episode-topic">Topic</Label>
-          <Input
-            id="episode-topic"
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            placeholder="What should this episode be about?"
-          />
+        {/* Source mode tabs */}
+        <div className="flex gap-1 rounded-lg bg-muted p-1">
+          <button
+            type="button"
+            onClick={() => setSourceMode("topic")}
+            className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              sourceMode === "topic"
+                ? "bg-background shadow-sm"
+                : "text-muted-foreground"
+            }`}
+          >
+            Custom Topic
+          </button>
+          <button
+            type="button"
+            onClick={() => setSourceMode("feeds")}
+            className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              sourceMode === "feeds"
+                ? "bg-background shadow-sm"
+                : "text-muted-foreground"
+            }`}
+          >
+            From My Feeds
+          </button>
         </div>
+
+        {/* Topic input or feed selector */}
+        {sourceMode === "topic" ? (
+          <div className="space-y-2">
+            <Label htmlFor="episode-topic">Topic</Label>
+            <Input
+              id="episode-topic"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder="What should this episode be about?"
+            />
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Label>Select Feeds</Label>
+            <p className="text-xs text-muted-foreground">
+              Generate an episode summarizing your latest feed content.
+            </p>
+            {activeFeeds.length === 0 ? (
+              <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+                No active feeds. Import feeds first.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {activeFeeds.map((feed) => {
+                  const selected = selectedFeedIds.has(feed.id);
+                  return (
+                    <button
+                      key={feed.id}
+                      type="button"
+                      onClick={() => toggleFeed(feed.id)}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                        selected
+                          ? "border-primary bg-primary/10 text-primary font-medium"
+                          : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    >
+                      {selected && <Check className="size-3" />}
+                      <Rss className="size-3" />
+                      {feed.title || feed.feed_url}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Length slider */}
         <div className="space-y-2">
