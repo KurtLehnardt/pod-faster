@@ -16,7 +16,8 @@ import {
   CardAction,
 } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Plus, Trash2, FolderOpen } from "lucide-react";
+import { Plus, Trash2, FolderOpen, ExternalLink } from "lucide-react";
+import Link from "next/link";
 
 type Topic = Database["public"]["Tables"]["topics"]["Row"];
 
@@ -208,13 +209,20 @@ export function TopicList({ initialTopics, userId }: TopicListProps) {
                   </div>
                 </CardAction>
               </CardHeader>
-              {topic.description && (
-                <CardContent>
+              <CardContent>
+                {topic.description && (
                   <p className="text-xs text-muted-foreground">
                     {topic.description}
                   </p>
-                </CardContent>
-              )}
+                )}
+                <Link
+                  href={`/feeds?search=${encodeURIComponent(topic.name)}`}
+                  className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  <ExternalLink className="size-3" />
+                  View matching feeds
+                </Link>
+              </CardContent>
             </Card>
           ))}
         </div>

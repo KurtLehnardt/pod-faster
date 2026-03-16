@@ -55,6 +55,8 @@ export interface UseFeedReturn {
   feed: PodcastFeed | null;
   episodes: FeedEpisode[];
   loading: boolean;
+  /** True only during the first fetch. Use this for full-page spinner gates. */
+  initialLoading: boolean;
   error: string | null;
   refresh: () => void;
 }
@@ -63,6 +65,7 @@ export function useFeed(id: string): UseFeedReturn {
   const [feed, setFeed] = useState<PodcastFeed | null>(null);
   const [episodes, setEpisodes] = useState<FeedEpisode[]>([]);
   const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
@@ -89,13 +92,16 @@ export function useFeed(id: string): UseFeedReturn {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to fetch feed");
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setInitialLoading(false);
+        }
       });
 
     return () => { cancelled = true; };
   }, [id, tick]);
 
-  return { feed, episodes, loading, error, refresh };
+  return { feed, episodes, loading, initialLoading, error, refresh };
 }
 
 // ── useAddFeed ──────────────────────────────────────────────

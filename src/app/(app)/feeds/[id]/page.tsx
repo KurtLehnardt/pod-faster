@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { FeedEpisodeList } from "@/components/feeds/feed-episode-list";
 import { useFeed, usePollFeed, useDeleteFeed, useUpdateFeed } from "@/lib/hooks/use-feeds";
+import { stripHtml } from "@/lib/utils/strip-html";
 
 export default function FeedDetailPage({
   params,
@@ -24,11 +25,20 @@ export default function FeedDetailPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
-  const { feed, episodes, loading, error, refresh } = useFeed(id);
+  const { feed, episodes, initialLoading, error, refresh } = useFeed(id);
   const { poll, loading: polling } = usePollFeed();
   const { deleteFeed, loading: deleting } = useDeleteFeed();
   const { updateFeed } = useUpdateFeed();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Optimistic override for active toggle to avoid full-page re-render
+  const [activeOverride, setActiveOverride] = useState<boolean | null>(null);
+
+  // Clear optimistic override once server data catches up
+  useEffect(() => {
+    if (feed && activeOverride !== null && feed.is_active === activeOverride) {
+      setActiveOverride(null);
+    }
+  }, [feed, activeOverride]);
 
   async function handlePoll() {
     try {
@@ -53,15 +63,22 @@ export default function FeedDetailPage({
   }
 
   async function handleToggleActive(checked: boolean) {
+    // Optimistic update: immediately show the new state
+    setActiveOverride(checked);
     try {
       await updateFeed(id, { is_active: checked });
+      // Sync the underlying data without visible blink
       refresh();
     } catch {
-      // handled by hook
+      // Revert optimistic update on failure
+      setActiveOverride(null);
     }
   }
 
-  if (loading) {
+  // Use optimistic value if set, otherwise use server value
+  const isActive = activeOverride ?? feed?.is_active ?? false;
+
+  if (initialLoading) {
     return (
       <div className="flex items-center justify-center py-16">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -95,9 +112,16 @@ export default function FeedDetailPage({
         <div className="flex-1 space-y-1">
           <h1 className="text-xl font-bold">{feed.title || feed.feed_url}</h1>
           {feed.description && (
-            <p className="text-sm text-muted-foreground line-clamp-2">{feed.description}</p>
+            <p className="text-sm text-muted-foreground line-clamp-2">{stripHtml(feed.description)}</p>
           )}
-          <p className="text-xs text-muted-foreground">{feed.feed_url}</p>
+          <a
+            href={feed.feed_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-primary hover:underline"
+          >
+            {feed.feed_url}
+          </a>
         </div>
       </div>
 
@@ -114,10 +138,10 @@ export default function FeedDetailPage({
         <div className="flex items-center gap-2">
           <Switch
             id="feed-active"
-            checked={feed.is_active}
+            checked={isActive}
             onCheckedChange={handleToggleActive}
           />
-          <Label htmlFor="feed-active">{feed.is_active ? "Active" : "Paused"}</Label>
+          <Label htmlFor="feed-active">{isActive ? "Active" : "Paused"}</Label>
         </div>
         <Badge variant="secondary">{episodes.length} episodes</Badge>
         <div className="flex-1" />
