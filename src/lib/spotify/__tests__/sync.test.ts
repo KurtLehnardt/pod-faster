@@ -325,10 +325,12 @@ describe("getSubscriptions", () => {
 // ---------------------------------------------------------------------------
 
 describe("updateSubscriptionPreference", () => {
-  it("updates the correct row", async () => {
-    resultQueue.push({ data: null, error: null });
+  it("updates the correct row and returns true", async () => {
+    resultQueue.push({ data: [{ id: "sub-s1" }], error: null });
 
-    await updateSubscriptionPreference("user-1", "sub-s1", false);
+    const result = await updateSubscriptionPreference("user-1", "sub-s1", false);
+
+    expect(result).toBe(true);
 
     const updateFn = supabaseChain["update"] as ReturnType<typeof vi.fn>;
     expect(updateFn).toHaveBeenCalledWith({ summarization_enabled: false });
@@ -337,6 +339,14 @@ describe("updateSubscriptionPreference", () => {
     const eqCalls = eqFn.mock.calls;
     expect(eqCalls).toContainEqual(["id", "sub-s1"]);
     expect(eqCalls).toContainEqual(["user_id", "user-1"]);
+  });
+
+  it("returns false when no row matches", async () => {
+    resultQueue.push({ data: [], error: null });
+
+    const result = await updateSubscriptionPreference("user-1", "nonexistent", false);
+
+    expect(result).toBe(false);
   });
 });
 

@@ -480,7 +480,7 @@ describe("Spotify API Routes", () => {
         data: { user: { id: "user-123" } },
       });
 
-      mockUpdateSubscriptionPreference.mockResolvedValueOnce(undefined);
+      mockUpdateSubscriptionPreference.mockResolvedValueOnce(true);
 
       const req = makeRequest(
         "PATCH",

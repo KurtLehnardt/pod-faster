@@ -67,8 +67,36 @@ export async function syncSubscriptions(userId: string): Promise<SyncResult> {
   const now = new Date().toISOString();
 
   // Separate new shows from existing for batched operations
-  const newShowRecords: Record<string, unknown>[] = [];
-  const existingShowRecords: Record<string, unknown>[] = [];
+  interface NewShowRecord {
+    user_id: string;
+    spotify_show_id: string;
+    show_name: string;
+    publisher: string;
+    description: string;
+    image_url: string | null;
+    spotify_url: string;
+    total_episodes: number;
+    summarization_enabled: boolean;
+    is_removed: boolean;
+    synced_at: string;
+  }
+
+  interface ExistingShowRecord {
+    id: string;
+    user_id: string;
+    spotify_show_id: string;
+    show_name: string;
+    publisher: string;
+    description: string;
+    image_url: string | null;
+    spotify_url: string;
+    total_episodes: number;
+    is_removed: boolean;
+    synced_at: string;
+  }
+
+  const newShowRecords: NewShowRecord[] = [];
+  const existingShowRecords: ExistingShowRecord[] = [];
 
   for (const show of spotifyShows) {
     const existing = existingByShowId.get(show.id);
