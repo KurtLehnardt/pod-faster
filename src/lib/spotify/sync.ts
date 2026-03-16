@@ -60,104 +60,108 @@ export async function syncSubscriptions(userId: string): Promise<SyncResult> {
 
   const spotifyShowIds = new Set(spotifyShows.map((s) => s.id));
 
-  // 5. Diff — process shows from Spotify
+  // 5. Diff — categorize shows into batches
   let added = 0;
   let unchanged = 0;
   const errors: string[] = [];
   const now = new Date().toISOString();
+
+  // Separate new shows from existing for batched operations
+  const newShowRecords: Record<string, unknown>[] = [];
+  const existingShowRecords: Record<string, unknown>[] = [];
 
   for (const show of spotifyShows) {
     const existing = existingByShowId.get(show.id);
     const imageUrl =
       show.images && show.images.length > 0 ? show.images[0].url : null;
 
-    try {
-      if (existing) {
-        // Update metadata, restore if previously removed
-        const { error: updateError } = await supabase
-          .from("spotify_subscriptions")
-          .update({
-            show_name: show.name,
-            publisher: show.publisher,
-            description: show.description,
-            image_url: imageUrl,
-            spotify_url: show.external_urls.spotify,
-            total_episodes: show.total_episodes,
-            is_removed: false,
-            synced_at: now,
-          })
-          .eq("id", existing.id);
+    if (existing) {
+      // Existing show — update metadata (do NOT touch summarization_enabled)
+      existingShowRecords.push({
+        id: existing.id,
+        user_id: userId,
+        spotify_show_id: show.id,
+        show_name: show.name,
+        publisher: show.publisher,
+        description: show.description,
+        image_url: imageUrl,
+        spotify_url: show.external_urls.spotify,
+        total_episodes: show.total_episodes,
+        is_removed: false,
+        synced_at: now,
+      });
 
-        if (updateError) {
-          errors.push(`Update ${show.name}: ${updateError.message}`);
-          continue;
-        }
-
-        // Count as "added" if it was previously removed, otherwise "unchanged"
-        if (existing.is_removed) {
-          added++;
-        } else {
-          unchanged++;
-        }
-      } else {
-        // Insert new subscription
-        const { error: insertError } = await supabase
-          .from("spotify_subscriptions")
-          .upsert(
-            {
-              user_id: userId,
-              spotify_show_id: show.id,
-              show_name: show.name,
-              publisher: show.publisher,
-              description: show.description,
-              image_url: imageUrl,
-              spotify_url: show.external_urls.spotify,
-              total_episodes: show.total_episodes,
-              summarization_enabled: true,
-              is_removed: false,
-              synced_at: now,
-            },
-            { onConflict: "user_id,spotify_show_id" }
-          );
-
-        if (insertError) {
-          errors.push(`Insert ${show.name}: ${insertError.message}`);
-          continue;
-        }
+      if (existing.is_removed) {
         added++;
+      } else {
+        unchanged++;
       }
-    } catch (err) {
-      errors.push(
-        `${show.name}: ${err instanceof Error ? err.message : "unknown error"}`
-      );
+    } else {
+      // New show — insert with summarization_enabled default
+      newShowRecords.push({
+        user_id: userId,
+        spotify_show_id: show.id,
+        show_name: show.name,
+        publisher: show.publisher,
+        description: show.description,
+        image_url: imageUrl,
+        spotify_url: show.external_urls.spotify,
+        total_episodes: show.total_episodes,
+        summarization_enabled: true,
+        is_removed: false,
+        synced_at: now,
+      });
+      added++;
     }
   }
 
-  // 6. Soft-remove subscriptions no longer in Spotify
-  let removed = 0;
+  // 5a. Batch upsert new shows
+  if (newShowRecords.length > 0) {
+    const { error: insertError } = await supabase
+      .from("spotify_subscriptions")
+      .upsert(newShowRecords, { onConflict: "user_id,spotify_show_id" });
+
+    if (insertError) {
+      errors.push(`Batch insert (${newShowRecords.length} shows): ${insertError.message}`);
+    }
+  }
+
+  // 5b. Batch upsert existing shows (metadata update, preserves summarization_enabled)
+  if (existingShowRecords.length > 0) {
+    const { error: updateError } = await supabase
+      .from("spotify_subscriptions")
+      .upsert(existingShowRecords, { onConflict: "user_id,spotify_show_id" });
+
+    if (updateError) {
+      errors.push(`Batch update (${existingShowRecords.length} shows): ${updateError.message}`);
+    }
+  }
+
+  // 6. Soft-remove subscriptions no longer in Spotify (batched)
+  const idsToRemove: string[] = [];
   for (const [showId, existing] of existingByShowId) {
     if (!spotifyShowIds.has(showId) && !existing.is_removed) {
-      try {
-        const { error: removeError } = await supabase
-          .from("spotify_subscriptions")
-          .update({ is_removed: true, synced_at: now })
-          .eq("id", existing.id);
+      idsToRemove.push(existing.id);
+    }
+  }
 
-        if (removeError) {
-          errors.push(`Remove ${existing.show_name}: ${removeError.message}`);
-          continue;
-        }
-        removed++;
-      } catch (err) {
-        errors.push(
-          `Remove ${existing.show_name}: ${err instanceof Error ? err.message : "unknown error"}`
-        );
-      }
+  const removed = idsToRemove.length;
+  if (idsToRemove.length > 0) {
+    const { error: removeError } = await supabase
+      .from("spotify_subscriptions")
+      .update({ is_removed: true, synced_at: now })
+      .in("id", idsToRemove);
+
+    if (removeError) {
+      errors.push(`Batch remove (${idsToRemove.length} shows): ${removeError.message}`);
     }
   }
 
   if (errors.length > 0) {
-    console.error(`Sync completed with ${errors.length} errors:`, errors);
+    console.error(
+      `Sync completed with ${errors.length} error(s):`,
+      errors.join("; ")
+    );
   }
 
   return {

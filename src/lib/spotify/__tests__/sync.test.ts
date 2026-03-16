@@ -168,9 +168,7 @@ describe("syncSubscriptions", () => {
 
     // select existing -> empty
     resultQueue.push({ data: [], error: null });
-    // upsert s1
-    resultQueue.push({ data: null, error: null });
-    // upsert s2
+    // batch upsert new shows
     resultQueue.push({ data: null, error: null });
 
     const result = await syncSubscriptions("user-1");
@@ -188,9 +186,9 @@ describe("syncSubscriptions", () => {
       data: [makeSubscription("s1"), makeSubscription("s2")],
       error: null,
     });
-    // update s1 metadata
+    // batch upsert existing shows (s1 metadata update)
     resultQueue.push({ data: null, error: null });
-    // soft-remove s2
+    // batch soft-remove (s2)
     resultQueue.push({ data: null, error: null });
 
     const result = await syncSubscriptions("user-1");
@@ -208,7 +206,7 @@ describe("syncSubscriptions", () => {
       data: [makeSubscription("s1")],
       error: null,
     });
-    // update s1 metadata
+    // batch upsert existing shows
     resultQueue.push({ data: null, error: null });
 
     const result = await syncSubscriptions("user-1");
@@ -225,7 +223,7 @@ describe("syncSubscriptions", () => {
       data: [makeSubscription("s1", { is_removed: true })],
       error: null,
     });
-    // update s1 — sets is_removed=false
+    // batch upsert existing shows — sets is_removed=false
     resultQueue.push({ data: null, error: null });
 
     const result = await syncSubscriptions("user-1");
@@ -243,19 +241,21 @@ describe("syncSubscriptions", () => {
       data: [makeSubscription("s1", { summarization_enabled: false })],
       error: null,
     });
-    // update metadata — should NOT include summarization_enabled
+    // batch upsert existing shows — should NOT include summarization_enabled
     resultQueue.push({ data: null, error: null });
 
     const result = await syncSubscriptions("user-1");
 
     expect(result.unchanged).toBe(1);
 
-    // Verify the update call did NOT include summarization_enabled
-    // The chain's .update() was called — inspect its arguments
-    const updateFn = supabaseChain["update"] as ReturnType<typeof vi.fn>;
-    if (updateFn && updateFn.mock.calls.length > 0) {
-      const updatePayload = updateFn.mock.calls[0][0];
-      expect(updatePayload).not.toHaveProperty("summarization_enabled");
+    // Verify the batch upsert call did NOT include summarization_enabled
+    const upsertFn = supabaseChain["upsert"] as ReturnType<typeof vi.fn>;
+    if (upsertFn && upsertFn.mock.calls.length > 0) {
+      const upsertPayload = upsertFn.mock.calls[0][0];
+      const records = Array.isArray(upsertPayload) ? upsertPayload : [upsertPayload];
+      for (const record of records) {
+        expect(record).not.toHaveProperty("summarization_enabled");
+      }
     }
   });
 
@@ -267,9 +267,7 @@ describe("syncSubscriptions", () => {
       data: [makeSubscription("s1"), makeSubscription("s2"), makeSubscription("s3")],
       error: null,
     });
-    // soft-remove s1, s2, s3
-    resultQueue.push({ data: null, error: null });
-    resultQueue.push({ data: null, error: null });
+    // batch soft-remove all 3
     resultQueue.push({ data: null, error: null });
 
     const result = await syncSubscriptions("user-1");
