@@ -129,30 +129,31 @@ export async function fetchUserProfile(
 
 /**
  * Fetch all saved shows (podcasts) from the user's library.
- * Handles pagination automatically.
+ * Handles pagination automatically with a safety limit to prevent
+ * infinite loops (max 50 pages / 2500 shows).
  */
 export async function fetchAllSavedShows(
   accessToken: string
 ): Promise<SpotifyShow[]> {
   const shows: SpotifyShow[] = [];
   const limit = 50;
+  const maxPages = 50;
   let offset = 0;
 
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  for (let page = 0; page < maxPages; page++) {
     const response = await spotifyFetch(
       accessToken,
       `/me/shows?limit=${limit}&offset=${offset}`
     );
-    const page =
+    const data =
       (await response.json()) as SpotifyPaginatedResponse<SpotifySavedShowItem>;
 
-    for (const item of page.items) {
+    for (const item of data.items) {
       shows.push(item.show);
     }
 
     // Check if we've fetched everything
-    if (offset + page.items.length >= page.total) {
+    if (offset + data.items.length >= data.total) {
       break;
     }
 
