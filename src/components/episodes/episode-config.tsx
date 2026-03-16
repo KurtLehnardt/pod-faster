@@ -107,6 +107,8 @@ export function EpisodeConfig({
 
   // Topic selection state (BUG-012 + BUG-013)
   const [availableTopics, setAvailableTopics] = useState<TopicItem[]>([]);
+  const [topicFetchError, setTopicFetchError] = useState<string | null>(null);
+  const [topicFetchTick, setTopicFetchTick] = useState(0);
   const [includedTopicIds, setIncludedTopicIds] = useState<Set<string>>(
     new Set()
   );
@@ -114,24 +116,34 @@ export function EpisodeConfig({
     new Set()
   );
 
+  function retryTopicFetch() {
+    setTopicFetchError(null);
+    setAvailableTopics([]);
+    setTopicFetchTick((t) => t + 1);
+  }
+
   // Fetch topics when dialog opens in topics mode
   useEffect(() => {
-    if (controlledOpen && sourceMode === "topics" && availableTopics.length === 0) {
-      const supabase = createClient();
-      supabase.auth.getUser().then(({ data: { user } }) => {
-        if (!user) return;
-        supabase
-          .from("topics")
-          .select("id, name")
-          .eq("user_id", user.id)
-          .eq("is_active", true)
-          .order("name")
-          .then(({ data }) => {
-            if (data) setAvailableTopics(data as TopicItem[]);
-          });
-      });
+    if (controlledOpen && sourceMode === "topics" && availableTopics.length === 0 && !topicFetchError) {
+      (async () => {
+        try {
+          const supabase = createClient();
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+          const { data, error } = await supabase
+            .from("topics")
+            .select("id, name")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .order("name");
+          if (error) throw error;
+          if (data) setAvailableTopics(data as TopicItem[]);
+        } catch {
+          setTopicFetchError("Failed to load topics. Please try again.");
+        }
+      })();
     }
-  }, [controlledOpen, sourceMode, availableTopics.length]);
+  }, [controlledOpen, sourceMode, availableTopics.length, topicFetchError, topicFetchTick]);
 
   // Generation state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -451,7 +463,18 @@ export function EpisodeConfig({
               <p className="text-xs text-muted-foreground">
                 Select topics to base the episode on.
               </p>
-              {availableTopics.length === 0 ? (
+              {topicFetchError ? (
+                <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-center text-sm space-y-2">
+                  <p className="text-destructive">{topicFetchError}</p>
+                  <button
+                    type="button"
+                    onClick={retryTopicFetch}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : availableTopics.length === 0 ? (
                 <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
                   No topics available. Add topics on the Topics page first.
                 </p>
