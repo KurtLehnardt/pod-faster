@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  let oauthState: { codeVerifier: string; state: string };
+  let oauthState: { codeVerifier: string; state: string; redirectUri?: string };
   try {
     oauthState = JSON.parse(cookieValue);
   } catch {
@@ -70,8 +70,15 @@ export async function GET(request: NextRequest) {
   }
 
   // 4. Exchange code for tokens
+  //    Use the redirect URI from the cookie (set during connect) to ensure
+  //    it matches the one used in the authorization request.
+  const redirectUri =
+    oauthState.redirectUri ||
+    process.env.SPOTIFY_REDIRECT_URI ||
+    `${request.nextUrl.origin}/api/spotify/callback`;
+
   try {
-    const tokens = await exchangeCodeForTokens(code, oauthState.codeVerifier);
+    const tokens = await exchangeCodeForTokens(code, oauthState.codeVerifier, redirectUri);
     const profile = await fetchUserProfile(tokens.access_token);
     await storeTokens(user.id, tokens, profile);
 

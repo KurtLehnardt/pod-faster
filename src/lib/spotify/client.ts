@@ -166,14 +166,16 @@ export async function fetchAllSavedShows(
 /**
  * Exchange an authorization code for access and refresh tokens.
  * Uses the Authorization Code + PKCE flow with a confidential client.
+ *
+ * @param redirectUri - Must match the redirect_uri used in the authorization request.
  */
 export async function exchangeCodeForTokens(
   code: string,
-  codeVerifier: string
+  codeVerifier: string,
+  redirectUri: string
 ): Promise<SpotifyTokenResponse> {
   const clientId = getEnv("SPOTIFY_CLIENT_ID");
   const clientSecret = getEnv("SPOTIFY_CLIENT_SECRET");
-  const redirectUri = getEnv("SPOTIFY_REDIRECT_URI");
 
   const body = new URLSearchParams({
     grant_type: "authorization_code",

@@ -129,11 +129,11 @@ describe("Spotify API Routes", () => {
   // =========================================================================
 
   describe("POST /api/spotify/connect", () => {
-    let POST: () => Promise<Response>;
+    let POST: (request: Request) => Promise<Response>;
 
     beforeEach(async () => {
       const mod = await import("@/app/api/spotify/connect/route");
-      POST = mod.POST;
+      POST = mod.POST as unknown as (request: Request) => Promise<Response>;
     });
 
     it("returns 401 when not authenticated", async () => {
@@ -141,7 +141,7 @@ describe("Spotify API Routes", () => {
         data: { user: null },
       });
 
-      const res = await POST();
+      const res = await POST(new Request("http://localhost:3000/api/spotify/connect", { method: "POST" }));
       expect(res.status).toBe(401);
 
       const data = await res.json();
@@ -157,7 +157,7 @@ describe("Spotify API Routes", () => {
       process.env.SPOTIFY_CLIENT_ID = "test-client-id";
       process.env.SPOTIFY_REDIRECT_URI = "http://localhost:3000/api/spotify/callback";
 
-      const res = await POST();
+      const res = await POST(new Request("http://localhost:3000/api/spotify/connect", { method: "POST" }));
       expect(res.status).toBe(200);
 
       const data = await res.json();

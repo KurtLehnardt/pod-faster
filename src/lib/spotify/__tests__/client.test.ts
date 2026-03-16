@@ -214,7 +214,7 @@ describe("exchangeCodeForTokens", () => {
     };
     mockFetch.mockResolvedValueOnce(jsonResponse(tokenResponse));
 
-    const result = await exchangeCodeForTokens("auth-code", "pkce-verifier");
+    const result = await exchangeCodeForTokens("auth-code", "pkce-verifier", "http://localhost:3000/api/spotify/callback");
 
     expect(result.access_token).toBe("access-123");
     expect(result.refresh_token).toBe("refresh-456");

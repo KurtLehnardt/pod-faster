@@ -7,11 +7,11 @@
  * a short-lived cookie containing the PKCE code_verifier and state.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import crypto from "node:crypto";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   // 1. Auth check
   const supabase = await createClient();
   const {
@@ -24,28 +24,33 @@ export async function POST() {
 
   // 2. Validate required env vars
   const clientId = process.env.SPOTIFY_CLIENT_ID;
-  const redirectUri = process.env.SPOTIFY_REDIRECT_URI;
-  if (!clientId || !redirectUri) {
-    console.error("Missing SPOTIFY_CLIENT_ID or SPOTIFY_REDIRECT_URI");
+  if (!clientId) {
+    console.error("Missing SPOTIFY_CLIENT_ID");
     return NextResponse.json(
       { error: "Spotify integration is not configured" },
       { status: 503 }
     );
   }
 
-  // 3. Generate PKCE code_verifier (64 random bytes, base64url)
+  // 3. Auto-detect redirect URI from the request origin.
+  //    Falls back to SPOTIFY_REDIRECT_URI env var if set.
+  const redirectUri =
+    process.env.SPOTIFY_REDIRECT_URI ||
+    `${request.nextUrl.origin}/api/spotify/callback`;
+
+  // 4. Generate PKCE code_verifier (64 random bytes, base64url)
   const codeVerifier = crypto.randomBytes(64).toString("base64url");
 
-  // 4. Generate code_challenge = base64url(SHA-256(codeVerifier))
+  // 5. Generate code_challenge = base64url(SHA-256(codeVerifier))
   const codeChallenge = crypto
     .createHash("sha256")
     .update(codeVerifier)
     .digest("base64url");
 
-  // 5. Generate state (32 random bytes, base64url)
+  // 6. Generate state (32 random bytes, base64url)
   const state = crypto.randomBytes(32).toString("base64url");
 
-  // 6. Build Spotify auth URL
+  // 7. Build Spotify auth URL
   const params = new URLSearchParams({
     response_type: "code",
     client_id: clientId,
@@ -57,11 +62,11 @@ export async function POST() {
   });
   const url = `https://accounts.spotify.com/authorize?${params}`;
 
-  // 6. Store PKCE state in cookie
+  // 8. Store PKCE state + redirect URI in cookie
   const response = NextResponse.json({ url });
   response.cookies.set(
     "spotify_oauth",
-    JSON.stringify({ codeVerifier, state }),
+    JSON.stringify({ codeVerifier, state, redirectUri }),
     {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
