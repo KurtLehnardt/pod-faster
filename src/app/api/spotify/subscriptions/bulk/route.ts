@@ -43,6 +43,13 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
+  if (updates.length > 100) {
+    return NextResponse.json(
+      { error: "updates array must not exceed 100 items" },
+      { status: 400 }
+    );
+  }
+
   // Validate each entry
   for (const entry of updates) {
     if (
