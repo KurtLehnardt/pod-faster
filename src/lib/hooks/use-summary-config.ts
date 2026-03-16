@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { SummaryConfig, SummaryGenerationLog } from "@/types/feed";
+import type { CreateSummaryConfigInput, UpdateSummaryConfigInput } from "@/lib/validation/feed-schemas";
 
 // ── useSummaryConfigs ───────────────────────────────────────
 
@@ -90,7 +91,7 @@ export function useCreateSummaryConfig() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const create = useCallback(async (data: Record<string, unknown>) => {
+  const create = useCallback(async (data: CreateSummaryConfigInput) => {
     setLoading(true);
     setError(null);
     try {
@@ -120,7 +121,7 @@ export function useUpdateSummaryConfig() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const update = useCallback(async (id: string, data: Record<string, unknown>) => {
+  const update = useCallback(async (id: string, data: UpdateSummaryConfigInput) => {
     setLoading(true);
     setError(null);
     try {

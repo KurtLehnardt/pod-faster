@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { PodcastFeed, FeedEpisode } from "@/types/feed";
+import type { UpdateFeedInput } from "@/lib/validation/feed-schemas";
 
 // ── useFeeds ────────────────────────────────────────────────
 
@@ -213,7 +214,7 @@ export function useDeleteFeed() {
 export function useUpdateFeed() {
   const [loading, setLoading] = useState(false);
 
-  const updateFeed = useCallback(async (id: string, data: Record<string, unknown>) => {
+  const updateFeed = useCallback(async (id: string, data: UpdateFeedInput) => {
     setLoading(true);
     try {
       const res = await fetch(`/api/feeds/${id}`, {

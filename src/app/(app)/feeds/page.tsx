@@ -8,7 +8,7 @@ import { ImportDialog } from "@/components/feeds/import-dialog";
 import { useFeeds, usePollFeed } from "@/lib/hooks/use-feeds";
 
 export default function FeedsPage() {
-  const { feeds, loading, refresh } = useFeeds();
+  const { feeds, loading, error, refresh } = useFeeds();
   const { poll, loading: polling } = usePollFeed();
   const [importOpen, setImportOpen] = useState(false);
 
@@ -41,7 +41,7 @@ export default function FeedsPage() {
         </div>
       </div>
 
-      <FeedList feeds={feeds} loading={loading} />
+      <FeedList feeds={feeds} loading={loading} error={error} />
 
       <ImportDialog
         open={importOpen}

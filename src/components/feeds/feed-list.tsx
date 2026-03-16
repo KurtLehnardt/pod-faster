@@ -1,15 +1,25 @@
 "use client";
 
-import { Loader2, Rss } from "lucide-react";
+import { AlertCircle, Loader2, Rss } from "lucide-react";
 import { FeedCard } from "./feed-card";
 import type { PodcastFeed } from "@/types/feed";
 
 interface FeedListProps {
   feeds: (PodcastFeed & { episode_count?: number })[];
   loading: boolean;
+  error?: string | null;
 }
 
-export function FeedList({ feeds, loading }: FeedListProps) {
+export function FeedList({ feeds, loading, error }: FeedListProps) {
+  if (error) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+        <AlertCircle className="size-4 shrink-0" />
+        <span>{error}</span>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
