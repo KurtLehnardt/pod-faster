@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 import { importOpmlSchema } from "@/lib/validation/feed-schemas";
 import { parseOpml, parseFeed } from "@/lib/rss/parser";
 import type { Database } from "@/types/database.types";
@@ -14,19 +14,18 @@ import { MAX_FEEDS_PER_USER } from "@/lib/utils/constants";
 
 type PodcastFeedRow = Database["public"]["Tables"]["podcast_feeds"]["Row"];
 
+/** Number of feeds to process concurrently during OPML import. */
+const BATCH_SIZE = 5;
+
 // ---------------------------------------------------------------------------
 // POST /api/feeds/import
 // ---------------------------------------------------------------------------
 
+// TODO: Add rate limiting when infrastructure (src/lib/rate-limit.ts) is available.
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAuth();
+  if (auth.error) return auth.error;
+  const { user, supabase } = auth;
 
   // Parse request body
   let body: unknown;
@@ -52,10 +51,9 @@ export async function POST(request: NextRequest) {
   try {
     opmlFeeds = await parseOpml(opml);
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Failed to parse OPML";
+    console.error("[feeds/import] OPML parse error:", err);
     return NextResponse.json(
-      { error: `OPML parse error: ${message}` },
+      { error: "Failed to parse OPML content" },
       { status: 422 }
     );
   }
@@ -103,69 +101,60 @@ export async function POST(request: NextRequest) {
     )
   );
 
-  // Process each feed from the OPML
-  let created = 0;
+  // Filter feeds that need processing (skip duplicates, respect limit)
+  const feedsToProcess: typeof opmlFeeds = [];
   let skipped = 0;
-  const errors: string[] = [];
   let totalFeedsProcessed = currentCount;
 
   for (const opmlFeed of opmlFeeds) {
-    // Check if adding another would exceed the limit
     if (totalFeedsProcessed >= MAX_FEEDS_PER_USER) {
-      errors.push(
-        `Skipped remaining feeds: user feed limit (${MAX_FEEDS_PER_USER}) reached`
-      );
       break;
     }
-
-    // Skip if already subscribed
     if (existingUrls.has(opmlFeed.feedUrl)) {
       skipped++;
       continue;
     }
+    existingUrls.add(opmlFeed.feedUrl);
+    feedsToProcess.push(opmlFeed);
+    totalFeedsProcessed++;
+  }
 
-    // Try to parse the feed for metadata
-    try {
-      const parsedFeed = await parseFeed(opmlFeed.feedUrl);
+  // Process feeds in parallel batches of BATCH_SIZE
+  let created = 0;
+  const errors: string[] = [];
 
-      const { data: insertedData, error: insertError } = await supabase
-        .from("podcast_feeds")
-        .insert({
-          user_id: user.id,
-          feed_url: opmlFeed.feedUrl,
-          title: parsedFeed.title,
-          description: parsedFeed.description,
-          image_url: parsedFeed.imageUrl,
-          is_active: true,
-          last_polled_at: new Date().toISOString(),
-        })
-        .select("id")
-        .single();
+  for (let i = 0; i < feedsToProcess.length; i += BATCH_SIZE) {
+    const batch = feedsToProcess.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (opmlFeed) => {
+        const parsedFeed = await parseFeed(opmlFeed.feedUrl);
 
-      if (insertError || !insertedData) {
-        // Could be a race condition duplicate
-        if (insertError?.code === "23505") {
-          skipped++;
-        } else {
-          errors.push(
-            `${opmlFeed.feedUrl}: ${insertError?.message ?? "Insert failed"}`
-          );
-        }
-        continue;
-      }
-
-      const insertedFeed = insertedData as Pick<PodcastFeedRow, "id">;
-
-      // Track the URL to avoid duplicates within this batch
-      existingUrls.add(opmlFeed.feedUrl);
-      totalFeedsProcessed++;
-      created++;
-
-      // Insert episodes (best-effort, don't fail the whole import)
-      for (const ep of parsedFeed.episodes) {
-        await supabase
-          .from("feed_episodes")
+        const { data: insertedData, error: insertError } = await supabase
+          .from("podcast_feeds")
           .insert({
+            user_id: user.id,
+            feed_url: opmlFeed.feedUrl,
+            title: parsedFeed.title,
+            description: parsedFeed.description,
+            image_url: parsedFeed.imageUrl,
+            is_active: true,
+            last_polled_at: new Date().toISOString(),
+          })
+          .select("id")
+          .single();
+
+        if (insertError || !insertedData) {
+          if (insertError?.code === "23505") {
+            return { status: "skipped" as const };
+          }
+          throw new Error(insertError?.message ?? "Insert failed");
+        }
+
+        const insertedFeed = insertedData as Pick<PodcastFeedRow, "id">;
+
+        // Batch-insert episodes
+        if (parsedFeed.episodes.length > 0) {
+          const episodeRows = parsedFeed.episodes.map((ep) => ({
             feed_id: insertedFeed.id,
             user_id: user.id,
             guid: ep.guid,
@@ -174,20 +163,42 @@ export async function POST(request: NextRequest) {
             audio_url: ep.audioUrl,
             published_at: ep.publishedAt?.toISOString() ?? null,
             duration_seconds: ep.durationSeconds,
-          })
-          .then(({ error: epErr }) => {
-            if (epErr) {
-              console.warn(
-                "[feeds/import] Episode insert warning:",
-                epErr.message
-              );
-            }
-          });
+          }));
+
+          const { error: batchError } = await supabase
+            .from("feed_episodes")
+            .upsert(episodeRows, {
+              onConflict: "feed_id,guid",
+              ignoreDuplicates: true,
+            });
+
+          if (batchError) {
+            console.warn(
+              "[feeds/import] Batch episode insert warning:",
+              batchError.message
+            );
+          }
+        }
+
+        return { status: "created" as const };
+      })
+    );
+
+    for (let j = 0; j < results.length; j++) {
+      const result = results[j];
+      if (result.status === "fulfilled") {
+        if (result.value.status === "created") {
+          created++;
+        } else {
+          skipped++;
+        }
+      } else {
+        console.error(
+          `[feeds/import] Feed processing error for ${batch[j].feedUrl}:`,
+          result.reason
+        );
+        errors.push(`${batch[j].feedUrl}: Failed to import feed`);
       }
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Unknown error";
-      errors.push(`${opmlFeed.feedUrl}: ${message}`);
     }
   }
 

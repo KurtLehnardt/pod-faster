@@ -10,20 +10,24 @@ const mockSingle = vi.fn();
 const mockMaybeSingle = vi.fn();
 const mockSelect = vi.fn();
 const mockInsert = vi.fn();
+const mockUpsert = vi.fn();
 const mockUpdate = vi.fn();
 const mockEq = vi.fn();
 const mockIn = vi.fn();
 const mockOrder = vi.fn();
+const mockLimit = vi.fn();
 const mockGetUser = vi.fn();
 
 function createChain() {
   const chain: Record<string, ReturnType<typeof vi.fn>> = {
     select: mockSelect,
     insert: mockInsert,
+    upsert: mockUpsert,
     update: mockUpdate,
     eq: mockEq,
     in: mockIn,
     order: mockOrder,
+    limit: mockLimit,
     single: mockSingle,
     maybeSingle: mockMaybeSingle,
   };
@@ -132,10 +136,10 @@ describe("GET /api/feeds", () => {
       return chain;
     });
 
-    // Second call: feed_episodes select for counts
+    // Second call: feed_episodes select for counts (now with .limit(10000))
     mockFrom.mockImplementationOnce(() => {
       const chain = createChain();
-      chain.in.mockResolvedValue({ data: episodeCounts, error: null });
+      chain.limit.mockResolvedValue({ data: episodeCounts, error: null });
       return chain;
     });
 
@@ -333,10 +337,13 @@ describe("POST /api/feeds", () => {
       return chain;
     });
 
-    // Insert episode
+    // Batch upsert episodes (returns .upsert().select("id"))
     mockFrom.mockImplementationOnce(() => {
       const chain = createChain();
-      chain.insert.mockResolvedValue({ error: null });
+      chain.select.mockResolvedValue({
+        data: [{ id: "ep-id-1" }],
+        error: null,
+      });
       return chain;
     });
 

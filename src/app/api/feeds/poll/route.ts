@@ -6,11 +6,11 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 import { pollFeed } from "@/lib/rss/poller";
 import { extractTranscript } from "@/lib/rss/transcript";
 import type { PodcastFeed } from "@/types/feed";
-import type { Database } from "@/types/database.types";
+import type { Database, TranscriptionStatus } from "@/types/database.types";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -32,15 +32,11 @@ type PodcastFeedRow = Database["public"]["Tables"]["podcast_feeds"]["Row"];
 // POST /api/feeds/poll
 // ---------------------------------------------------------------------------
 
+// TODO: Add rate limiting when infrastructure (src/lib/rate-limit.ts) is available.
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAuth();
+  if (auth.error) return auth.error;
+  const { user, supabase } = auth;
 
   // Parse body (feedId is optional)
   let feedId: string | undefined;
@@ -142,9 +138,8 @@ export async function POST(request: NextRequest) {
         existingGuids,
       });
 
-      let newEpisodeCount = 0;
-
-      // Insert new episodes
+      // Batch-insert new episodes
+      const episodeRows = [];
       for (const ep of result.newEpisodes) {
         // Try to extract a free transcript
         let transcript: string | null = null;
@@ -164,29 +159,38 @@ export async function POST(request: NextRequest) {
           // Transcript extraction failure is non-fatal
         }
 
-        const { error: epError } = await supabase
-          .from("feed_episodes")
-          .insert({
-            feed_id: feed.id,
-            user_id: feed.user_id,
-            guid: ep.guid,
-            title: ep.title,
-            description: ep.description,
-            audio_url: ep.audioUrl,
-            published_at: ep.publishedAt?.toISOString() ?? null,
-            duration_seconds: ep.durationSeconds,
-            transcript,
-            transcript_source: transcriptSource,
-            transcription_status: transcript ? "completed" : "none",
-          });
+        episodeRows.push({
+          feed_id: feed.id,
+          user_id: feed.user_id,
+          guid: ep.guid,
+          title: ep.title,
+          description: ep.description,
+          audio_url: ep.audioUrl,
+          published_at: ep.publishedAt?.toISOString() ?? null,
+          duration_seconds: ep.durationSeconds,
+          transcript,
+          transcript_source: transcriptSource,
+          transcription_status: (transcript ? "completed" : "none") as TranscriptionStatus,
+        });
+      }
 
-        if (!epError) {
-          newEpisodeCount++;
-        } else {
+      let newEpisodeCount = 0;
+      if (episodeRows.length > 0) {
+        const { data: insertedEpisodes, error: batchError } = await supabase
+          .from("feed_episodes")
+          .upsert(episodeRows, {
+            onConflict: "feed_id,guid",
+            ignoreDuplicates: true,
+          })
+          .select("id");
+
+        if (batchError) {
           console.warn(
-            "[feeds/poll] Episode insert warning:",
-            epError.message
+            "[feeds/poll] Batch episode insert warning:",
+            batchError.message
           );
+        } else {
+          newEpisodeCount = insertedEpisodes?.length ?? 0;
         }
       }
 
@@ -237,14 +241,12 @@ export async function POST(request: NextRequest) {
       totalPolled++;
       totalNewEpisodes += newEpisodeCount;
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Unknown error";
-      console.error(`[feeds/poll] Error polling feed ${feed.id}:`, message);
+      console.error(`[feeds/poll] Error polling feed ${feed.id}:`, err);
 
       // Increment error count and potentially auto-deactivate
       const newErrorCount = feed.poll_error_count + 1;
       const updatePayload: Record<string, unknown> = {
-        poll_error: message,
+        poll_error: err instanceof Error ? err.message : "Poll failed",
         poll_error_count: newErrorCount,
         last_polled_at: new Date().toISOString(),
       };

@@ -6,13 +6,13 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 import { createFeedSchema } from "@/lib/validation/feed-schemas";
 import { validateFeedUrl } from "@/lib/rss/url-validator";
 import { parseFeed } from "@/lib/rss/parser";
 import { extractTranscript } from "@/lib/rss/transcript";
 import type { PodcastFeed } from "@/types/feed";
-import type { Database } from "@/types/database.types";
+import type { Database, TranscriptionStatus } from "@/types/database.types";
 import { MAX_FEEDS_PER_USER } from "@/lib/utils/constants";
 
 // ---------------------------------------------------------------------------
@@ -27,14 +27,9 @@ type FeedEpisodeRow = Database["public"]["Tables"]["feed_episodes"]["Row"];
 // ---------------------------------------------------------------------------
 
 export async function GET() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAuth();
+  if (auth.error) return auth.error;
+  const { user, supabase } = auth;
 
   // Fetch all feeds for the user
   const { data, error } = await supabase
@@ -54,6 +49,8 @@ export async function GET() {
   const feeds = (data ?? []) as PodcastFeedRow[];
 
   // Get episode counts per feed
+  // TODO: Replace with supabase.rpc('feed_episode_counts') when the DB RPC is available.
+  // Current approach fetches only feed_id column with a safety limit to prevent unbounded fetches.
   const feedIds = feeds.map((f) => f.id);
   const feedsWithCounts: Array<PodcastFeed & { episode_count: number }> = [];
 
@@ -61,7 +58,8 @@ export async function GET() {
     const { data: countData, error: countError } = await supabase
       .from("feed_episodes")
       .select("feed_id")
-      .in("feed_id", feedIds);
+      .in("feed_id", feedIds)
+      .limit(10000);
 
     if (countError) {
       console.error("[feeds] Count error:", countError);
@@ -91,15 +89,11 @@ export async function GET() {
 // POST /api/feeds
 // ---------------------------------------------------------------------------
 
+// TODO: Add rate limiting when infrastructure (src/lib/rate-limit.ts) is available.
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAuth();
+  if (auth.error) return auth.error;
+  const { user, supabase } = auth;
 
   // Parse request body
   let body: unknown;
@@ -172,10 +166,9 @@ export async function POST(request: NextRequest) {
   try {
     parsedFeed = await parseFeed(feedUrl);
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Failed to parse feed";
+    console.error("[feeds] Feed parse error:", err);
     return NextResponse.json(
-      { error: `Unable to fetch or parse feed: ${message}` },
+      { error: "Unable to fetch or parse feed" },
       { status: 422 }
     );
   }
@@ -205,9 +198,8 @@ export async function POST(request: NextRequest) {
 
   const feed = insertedData as PodcastFeedRow;
 
-  // Insert episodes from the parsed feed
-  let episodesImported = 0;
-
+  // Batch-insert episodes from the parsed feed
+  const episodeRows = [];
   for (const ep of parsedFeed.episodes) {
     // Try to extract a free transcript
     let transcript: string | null = null;
@@ -226,7 +218,7 @@ export async function POST(request: NextRequest) {
       // Transcript extraction failure is non-fatal
     }
 
-    const { error: epError } = await supabase.from("feed_episodes").insert({
+    episodeRows.push({
       feed_id: feed.id,
       user_id: user.id,
       guid: ep.guid,
@@ -237,14 +229,21 @@ export async function POST(request: NextRequest) {
       duration_seconds: ep.durationSeconds,
       transcript,
       transcript_source: transcriptSource,
-      transcription_status: transcript ? "completed" : "none",
+      transcription_status: (transcript ? "completed" : "none") as TranscriptionStatus,
     });
+  }
 
-    if (!epError) {
-      episodesImported++;
+  let episodesImported = 0;
+  if (episodeRows.length > 0) {
+    const { data: insertedEpisodes, error: batchError } = await supabase
+      .from("feed_episodes")
+      .upsert(episodeRows, { onConflict: "feed_id,guid", ignoreDuplicates: true })
+      .select("id");
+
+    if (batchError) {
+      console.warn("[feeds] Batch episode insert warning:", batchError.message);
     } else {
-      // Log but don't fail — episode may be a duplicate GUID
-      console.warn("[feeds] Episode insert warning:", epError.message);
+      episodesImported = insertedEpisodes?.length ?? 0;
     }
   }
 

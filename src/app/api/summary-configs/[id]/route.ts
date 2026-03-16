@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 import { updateSummaryConfigSchema } from "@/lib/validation/feed-schemas";
 import { computeNextDueAt } from "@/lib/pipeline/summary-pipeline";
 import type { SummaryConfig, Cadence } from "@/types/feed";
@@ -24,14 +24,9 @@ export async function GET(
   context: RouteContext
 ) {
   const { id } = await context.params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAuth();
+  if (auth.error) return auth.error;
+  const { user, supabase } = auth;
 
   // Fetch config with ownership check
   const { data: rawConfig, error: configError } = await supabase
@@ -89,14 +84,9 @@ export async function PUT(
   context: RouteContext
 ) {
   const { id } = await context.params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAuth();
+  if (auth.error) return auth.error;
+  const { user, supabase } = auth;
 
   // Ownership check
   const { data: rawExisting, error: existingError } = await supabase
@@ -171,7 +161,12 @@ export async function PUT(
     }
   }
 
-  // Sync feed links if feedIds provided
+  // Sync feed links if feedIds provided.
+  // NOTE: This is a non-atomic delete-then-insert. If the insert fails after
+  // the delete, the config will temporarily have no linked feeds. A proper
+  // fix would use a DB transaction (e.g., supabase.rpc with a plpgsql function).
+  // For now, we wrap in try-catch and return 500 if the insert fails so the
+  // client knows to retry.
   if (feedIds !== undefined && feedIds.length > 0) {
     // Delete existing links
     const { error: deleteError } = await supabase
@@ -181,6 +176,10 @@ export async function PUT(
 
     if (deleteError) {
       console.error("[summary-configs] Delete feed links error:", deleteError);
+      return NextResponse.json(
+        { error: "Failed to update feed links" },
+        { status: 500 }
+      );
     }
 
     // Insert new links
@@ -197,7 +196,19 @@ export async function PUT(
       .insert(feedRows);
 
     if (insertError) {
-      console.error("[summary-configs] Insert feed links error:", insertError);
+      console.error(
+        "[summary-configs] Insert feed links error after delete:",
+        insertError
+      );
+      // Feed links were deleted but re-insert failed — data is inconsistent.
+      // Return 500 so the client knows to retry the entire update.
+      return NextResponse.json(
+        {
+          error:
+            "Feed links update partially failed. Please retry the update to restore feed links.",
+        },
+        { status: 500 }
+      );
     }
   }
 
@@ -222,14 +233,9 @@ export async function DELETE(
   context: RouteContext
 ) {
   const { id } = await context.params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAuth();
+  if (auth.error) return auth.error;
+  const { user, supabase } = auth;
 
   // Ownership check + delete
   const { error: deleteError } = await supabase

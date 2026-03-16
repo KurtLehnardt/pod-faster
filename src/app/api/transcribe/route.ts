@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 import { triggerTranscriptionSchema } from "@/lib/validation/feed-schemas";
 import {
   processTranscription,
@@ -18,15 +18,11 @@ import {
 // Allow up to 300s for long audio files
 export const maxDuration = 300;
 
+// TODO: Add rate limiting when infrastructure (src/lib/rate-limit.ts) is available.
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAuth();
+  if (auth.error) return auth.error;
+  const { user, supabase } = auth;
 
   let body: unknown;
   try {
@@ -108,16 +104,31 @@ export async function POST(request: NextRequest) {
   }
 
   // Process transcription
-  const result = await processTranscription({
-    feedEpisodeId: episode.id,
-    userId: user.id,
-    audioUrl: episode.audio_url,
-    durationSeconds: episode.duration_seconds,
-  });
+  try {
+    const result = await processTranscription({
+      feedEpisodeId: episode.id,
+      userId: user.id,
+      audioUrl: episode.audio_url,
+      durationSeconds: episode.duration_seconds,
+    });
 
-  if (!result.success) {
+    if (!result.success) {
+      console.error(
+        `[transcribe] Transcription failed for episode ${episode.id}:`,
+        result.error
+      );
+      return NextResponse.json(
+        { error: "Transcription failed" },
+        { status: 500 }
+      );
+    }
+  } catch (err) {
+    console.error(
+      `[transcribe] Unexpected error for episode ${episode.id}:`,
+      err
+    );
     return NextResponse.json(
-      { error: result.error ?? "Transcription failed" },
+      { error: "Transcription failed" },
       { status: 500 }
     );
   }

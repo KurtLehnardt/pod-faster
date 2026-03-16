@@ -7,6 +7,7 @@
  * where next_due_at <= now(), runs the pipeline for each.
  */
 
+import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -17,6 +18,14 @@ import type { EpisodeStyle, EpisodeTone, VoiceConfig } from "@/types/episode";
 import type { Cadence, SummaryConfig } from "@/types/feed";
 
 export const maxDuration = 300;
+
+/**
+ * Maximum number of configs to process per cron invocation.
+ * If there are more due configs than this, they will be picked up
+ * in subsequent cron runs. Consider increasing cron frequency if
+ * this limit is regularly hit.
+ */
+const MAX_CONFIGS_PER_RUN = 10;
 
 /**
  * Map cadence to the minimum interval in milliseconds.
@@ -48,19 +57,26 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (authHeader !== `Bearer ${cronSecret}`) {
+  // Timing-safe comparison to prevent timing attacks on the secret
+  const expected = Buffer.from(`Bearer ${cronSecret}`);
+  const provided = Buffer.from(authHeader ?? "");
+  if (
+    expected.length !== provided.length ||
+    !crypto.timingSafeEqual(expected, provided)
+  ) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const supabase = createAdminClient();
   const now = new Date().toISOString();
 
-  // Query active summary configs that are due
+  // Query active summary configs that are due, limited to MAX_CONFIGS_PER_RUN
   const { data: rawConfigs, error: queryError } = await supabase
     .from("summary_configs")
     .select("*")
     .eq("is_active", true)
-    .lte("next_due_at", now);
+    .lte("next_due_at", now)
+    .limit(MAX_CONFIGS_PER_RUN);
 
   if (queryError) {
     console.error("[cron/generate-summaries] Query error:", queryError);
@@ -76,13 +92,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ processed: 0, skipped: 0 });
   }
 
-  let processed = 0;
+  // Filter out configs that were generated too recently (idempotency)
+  const configsToProcess: SummaryConfig[] = [];
   let skipped = 0;
 
   for (const config of dueConfigs) {
     const cadence = config.cadence as Cadence;
 
-    // Idempotency check: skip if last_generated_at is within half the cadence
     if (config.last_generated_at) {
       const lastGenTime = new Date(config.last_generated_at).getTime();
       const halfInterval = cadenceHalfIntervalMs(cadence);
@@ -96,26 +112,39 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const voiceConfig = config.voice_config as unknown as VoiceConfig | null;
+    configsToProcess.push(config);
+  }
 
-    const pipelineParams: SummaryPipelineParams = {
-      summaryConfigId: config.id,
-      userId: config.user_id,
-      style: config.style as EpisodeStyle,
-      tone: config.tone as EpisodeTone,
-      lengthMinutes: config.length_minutes,
-      voiceConfig: voiceConfig ?? { voices: [] },
-    };
+  // Process all eligible configs in parallel
+  const results = await Promise.allSettled(
+    configsToProcess.map(async (config) => {
+      const cadence = config.cadence as Cadence;
+      const voiceConfig = config.voice_config as unknown as VoiceConfig | null;
 
-    try {
+      const pipelineParams: SummaryPipelineParams = {
+        summaryConfigId: config.id,
+        userId: config.user_id,
+        style: config.style as EpisodeStyle,
+        tone: config.tone as EpisodeTone,
+        lengthMinutes: config.length_minutes,
+        voiceConfig: voiceConfig ?? { voices: [] },
+      };
+
       await runSummaryPipeline(pipelineParams);
+      return cadence; // return for logging if needed
+    })
+  );
+
+  let processed = 0;
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+    if (result.status === "fulfilled") {
       processed++;
-    } catch (error) {
+    } else {
       console.error(
-        `[cron/generate-summaries] Pipeline failed for config ${config.id}:`,
-        error
+        `[cron/generate-summaries] Pipeline failed for config ${configsToProcess[i].id}:`,
+        result.reason
       );
-      // Pipeline handles its own error logging, so just continue
       skipped++;
     }
   }

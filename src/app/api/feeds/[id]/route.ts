@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 import { updateFeedSchema } from "@/lib/validation/feed-schemas";
 import type { PodcastFeed, FeedEpisode } from "@/types/feed";
 
@@ -28,14 +28,9 @@ export async function GET(
   context: RouteContext
 ) {
   const { id } = await context.params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAuth();
+  if (auth.error) return auth.error;
+  const { user, supabase } = auth;
 
   // Fetch feed with ownership check
   const { data: feed, error } = await supabase
@@ -81,14 +76,9 @@ export async function PUT(
   context: RouteContext
 ) {
   const { id } = await context.params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAuth();
+  if (auth.error) return auth.error;
+  const { user, supabase } = auth;
 
   // Parse body
   let body: unknown;
@@ -167,14 +157,9 @@ export async function DELETE(
   context: RouteContext
 ) {
   const { id } = await context.params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAuth();
+  if (auth.error) return auth.error;
+  const { user, supabase } = auth;
 
   // Verify ownership
   const { data: existing } = await supabase
@@ -188,7 +173,12 @@ export async function DELETE(
     return NextResponse.json({ error: "Feed not found" }, { status: 404 });
   }
 
-  // Delete feed — cascade handles feed_episodes and summary_config_feeds
+  // Delete feed — cascade handles feed_episodes and summary_config_feeds.
+  // NOTE: Cascades work correctly because the FK constraints use ON DELETE CASCADE
+  // at the database level, which executes regardless of RLS policies. The
+  // user-scoped Supabase client only controls whether the DELETE on podcast_feeds
+  // itself is authorised (via RLS), but once the row is deleted, Postgres handles
+  // the cascade internally.
   const { error } = await supabase
     .from("podcast_feeds")
     .delete()

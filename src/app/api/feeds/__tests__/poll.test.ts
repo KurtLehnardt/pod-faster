@@ -18,6 +18,7 @@ function createChain() {
   const methods = [
     "select",
     "insert",
+    "upsert",
     "update",
     "delete",
     "eq",
@@ -140,12 +141,16 @@ function mockExistingEpisodes(guids: string[]) {
 }
 
 /**
- * Helper: set up a mockFrom for an .insert() call that resolves
+ * Helper: set up a mockFrom for a batch .upsert().select("id") call that resolves
  */
-function mockEpisodeInsert(error: unknown = null) {
+function mockEpisodeUpsert(error: unknown = null, count = 1) {
   mockFrom.mockImplementationOnce(() => {
     const chain = createChain();
-    chain.insert.mockResolvedValue({ error });
+    // Terminal is .select("id") after .upsert()
+    chain.select.mockResolvedValue({
+      data: error ? null : Array.from({ length: count }, (_, i) => ({ id: `ep-id-${i}` })),
+      error,
+    });
     return chain;
   });
 }
@@ -226,7 +231,7 @@ describe("POST /api/feeds/poll", () => {
     mockExistingEpisodes(["ep-old-1"]);
 
     // 3. Insert new episode
-    mockEpisodeInsert();
+    mockEpisodeUpsert();
 
     // 4. Update feed metadata -> .update().eq()
     mockFeedUpdate();
@@ -364,7 +369,7 @@ describe("POST /api/feeds/poll", () => {
     mockExistingEpisodes([]);
 
     // 3. Insert episode
-    mockEpisodeInsert();
+    mockEpisodeUpsert();
 
     // 4. Update feed metadata
     mockFeedUpdate();
@@ -416,7 +421,7 @@ describe("POST /api/feeds/poll", () => {
     mockExistingEpisodes([]);
 
     // 3. Insert episode
-    mockEpisodeInsert();
+    mockEpisodeUpsert();
 
     // 4. Update feed metadata — capture the payload
     let updatePayload: Record<string, unknown> | undefined;

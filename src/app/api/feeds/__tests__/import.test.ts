@@ -12,10 +12,13 @@ const mockInsert = vi.fn();
 const mockEq = vi.fn();
 const mockGetUser = vi.fn();
 
+const mockUpsert = vi.fn();
+
 function createChain() {
   const chain: Record<string, ReturnType<typeof vi.fn>> = {
     select: mockSelect,
     insert: mockInsert,
+    upsert: mockUpsert,
     eq: mockEq,
     single: mockSingle,
   };
@@ -167,47 +170,32 @@ describe("POST /api/feeds/import", () => {
       return chain;
     });
 
-    // Feed 1 insert
-    mockFrom.mockImplementationOnce(() => {
+    // Feeds are processed in parallel batches, so use a generic mock
+    // that handles feed inserts (.insert().select().single()) and
+    // episode upserts (.upsert()) in any order.
+    let feedInsertCount = 0;
+    mockFrom.mockImplementation((...args: unknown[]) => {
+      const table = args[0] as string;
       const chain = createChain();
-      chain.single.mockResolvedValue({
-        data: { id: "feed-1" },
-        error: null,
-      });
-      return chain;
-    });
-
-    // Feed 1 episode insert
-    mockFrom.mockImplementationOnce(() => {
-      const chain = createChain();
-      chain.insert.mockReturnValue(
-        Promise.resolve({ error: null })
-      );
-      return chain;
-    });
-
-    // Feed 2 insert
-    mockFrom.mockImplementationOnce(() => {
-      const chain = createChain();
-      chain.single.mockResolvedValue({
-        data: { id: "feed-2" },
-        error: null,
-      });
-      return chain;
-    });
-
-    // Feed 2 episode insert
-    mockFrom.mockImplementationOnce(() => {
-      const chain = createChain();
-      chain.insert.mockReturnValue(
-        Promise.resolve({ error: null })
-      );
+      if (table === "podcast_feeds") {
+        feedInsertCount++;
+        chain.single.mockResolvedValue({
+          data: { id: `feed-${feedInsertCount}` },
+          error: null,
+        });
+      } else if (table === "feed_episodes") {
+        // Batch upsert — terminal is the upsert itself (no .select() chain needed)
+        chain.upsert.mockResolvedValue({ error: null });
+      }
       return chain;
     });
 
     const { POST } = await import("../import/route");
     const response = await POST(makeRequest({ opml: SAMPLE_OPML }) as Parameters<typeof POST>[0]);
     const json = await response.json();
+
+    // Restore default mock
+    mockFrom.mockImplementation(() => createChain());
 
     expect(response.status).toBe(201);
     expect(json.created).toBe(2);
@@ -315,6 +303,6 @@ describe("POST /api/feeds/import", () => {
     const json = await response.json();
 
     expect(response.status).toBe(422);
-    expect(json.error).toContain("OPML parse error");
+    expect(json.error).toContain("Failed to parse OPML content");
   });
 });

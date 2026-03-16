@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 import { createSummaryConfigSchema } from "@/lib/validation/feed-schemas";
 import { computeNextDueAt } from "@/lib/pipeline/summary-pipeline";
 import type { SummaryConfig } from "@/types/feed";
@@ -17,14 +17,9 @@ import type { Json } from "@/types/database.types";
 // ---------------------------------------------------------------------------
 
 export async function GET() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAuth();
+  if (auth.error) return auth.error;
+  const { user, supabase } = auth;
 
   // Fetch user's summary configs
   const { data: rawConfigs, error: configsError } = await supabase
@@ -84,14 +79,9 @@ export async function GET() {
 // ---------------------------------------------------------------------------
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAuth();
+  if (auth.error) return auth.error;
+  const { user, supabase } = auth;
 
   let body: unknown;
   try {
