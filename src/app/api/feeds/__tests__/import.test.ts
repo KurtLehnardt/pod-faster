@@ -151,7 +151,7 @@ describe("POST /api/feeds/import", () => {
     // Both feeds run in parallel via Promise.allSettled, so use
     // table-name-based mock to handle non-deterministic call order.
     let feedInsertCount = 0;
-    mockFrom.mockImplementation((table: string) => {
+    mockFrom.mockImplementation(((table: string) => {
       const chain = createChain();
       if (table === "podcast_feeds") {
         feedInsertCount++;
@@ -163,7 +163,7 @@ describe("POST /api/feeds/import", () => {
         chain.upsert.mockResolvedValue({ error: null });
       }
       return chain;
-    });
+    }) as () => ReturnType<typeof createChain>);
 
     const { POST } = await import("../import/route");
     const response = await POST(makeRequest({ opml: SAMPLE_OPML }) as Parameters<typeof POST>[0]);
