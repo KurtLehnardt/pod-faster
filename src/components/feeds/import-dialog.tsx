@@ -29,6 +29,7 @@ export function ImportDialog({ open, onOpenChange, onSuccess }: ImportDialogProp
   const [opmlContent, setOpmlContent] = useState("");
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
 
   const { addFeed, loading: addLoading, error: addError } = useAddFeed();
   const { importOpml, loading: importLoading, error: importError } = useImportOpml();
@@ -41,6 +42,7 @@ export function ImportDialog({ open, onOpenChange, onSuccess }: ImportDialogProp
       setOpmlContent("");
       setUploadedFileName(null);
       setResult(null);
+      setFileError(null);
     }
     onOpenChange(nextOpen);
   }
@@ -127,12 +129,17 @@ export function ImportDialog({ open, onOpenChange, onSuccess }: ImportDialogProp
   function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    setFileError(null);
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string") {
         setOpmlContent(reader.result);
         setUploadedFileName(file.name);
       }
+    };
+    reader.onerror = () => {
+      setUploadedFileName(null);
+      setFileError("Failed to read the file. Please try again or paste the content manually.");
     };
     reader.readAsText(file);
   }
@@ -194,6 +201,9 @@ export function ImportDialog({ open, onOpenChange, onSuccess }: ImportDialogProp
                 <p className="text-sm text-green-600">
                   Uploaded: {uploadedFileName}
                 </p>
+              )}
+              {fileError && (
+                <p className="text-sm text-destructive">{fileError}</p>
               )}
             </div>
             {!uploadedFileName && (
