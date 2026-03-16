@@ -125,7 +125,11 @@ function startRAF(): void {
   const tick = () => {
     const audio = getAudio();
     if (audio && !audio.paused) {
-      setState({ currentTime: audio.currentTime });
+      const patch: Partial<AudioPlayerState> = { currentTime: audio.currentTime };
+      if (Number.isFinite(audio.duration) && audio.duration > state.duration) {
+        patch.duration = audio.duration;
+      }
+      setState(patch);
     }
     rafId = requestAnimationFrame(tick);
   };
@@ -147,6 +151,12 @@ function initAudioListeners(): void {
 
   audio.addEventListener("loadedmetadata", () => {
     setState({ duration: audio.duration, isLoading: false });
+  });
+
+  audio.addEventListener("durationchange", () => {
+    if (Number.isFinite(audio.duration)) {
+      setState({ duration: audio.duration });
+    }
   });
 
   audio.addEventListener("canplay", () => {
