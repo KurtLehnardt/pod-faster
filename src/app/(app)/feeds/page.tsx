@@ -156,7 +156,7 @@ function FeedsPageContent() {
           <div className="flex flex-wrap items-center gap-2">
             {STATUS_OPTIONS.map(({ value, label }) => (
               <button
-                key={value}
+                key={`status-${value}`}
                 onClick={() => setStatusFilter(value)}
                 className={`rounded-full border px-3 py-1 text-sm transition-colors ${
                   statusFilter === value
@@ -170,7 +170,7 @@ function FeedsPageContent() {
             <span className="mx-1 text-border">|</span>
             {SOURCE_OPTIONS.map(({ value, label }) => (
               <button
-                key={value}
+                key={`source-${value}`}
                 onClick={() => setSourceFilter(value)}
                 className={`rounded-full border px-3 py-1 text-sm transition-colors ${
                   sourceFilter === value

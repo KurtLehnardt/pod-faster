@@ -118,6 +118,11 @@ export async function POST(request: NextRequest) {
   let totalNewEpisodes = 0;
 
   for (const feed of feedsToPoll) {
+    // Skip feeds with non-HTTP URLs (e.g. spotify:// placeholders)
+    if (!feed.feed_url.startsWith("http://") && !feed.feed_url.startsWith("https://")) {
+      continue;
+    }
+
     try {
       // Get existing episode GUIDs
       const { data: existingEpData } = await supabase
