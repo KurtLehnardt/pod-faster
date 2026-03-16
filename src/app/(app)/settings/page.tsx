@@ -117,9 +117,9 @@ export default function SettingsPage() {
           Configure your account and podcast preferences.
         </p>
       </div>
-      <PreferencesForm profile={profile} />
-      <Separator />
       <SpotifySection />
+      <Separator />
+      <PreferencesForm profile={profile} />
     </div>
   );
 }
