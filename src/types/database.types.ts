@@ -1,8 +1,9 @@
 /**
  * TypeScript types generated from the pod-faster Supabase schema.
- * Based on migrations: 00001_initial_schema, 00002_rls_policies,
- * 00003_indexes, 00004_storage, 00005_feed_importer, 00006_spotify_integration.
+ * Based on migrations: 00001_initial_schema through 00007_feed_source_tracking.
  */
+
+export type FeedSource = "imported" | "spotify";
 
 export type Json =
   | string
@@ -421,6 +422,8 @@ export interface Database {
           is_active: boolean;
           poll_error: string | null;
           poll_error_count: number;
+          source: FeedSource;
+          spotify_show_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -436,6 +439,8 @@ export interface Database {
           is_active?: boolean;
           poll_error?: string | null;
           poll_error_count?: number;
+          source?: FeedSource;
+          spotify_show_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -451,6 +456,8 @@ export interface Database {
           is_active?: boolean;
           poll_error?: string | null;
           poll_error_count?: number;
+          source?: FeedSource;
+          spotify_show_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };

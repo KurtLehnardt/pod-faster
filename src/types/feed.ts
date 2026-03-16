@@ -4,7 +4,9 @@
  * summary_config_feeds, summary_generation_log.
  */
 
-import type { Json } from "./database.types";
+import type { Json, FeedSource } from "./database.types";
+
+export type { FeedSource };
 
 // ── Enums / Union Types ──────────────────────────────────────
 
@@ -46,6 +48,8 @@ export interface PodcastFeed {
   is_active: boolean;
   poll_error: string | null;
   poll_error_count: number;
+  source: FeedSource;
+  spotify_show_id: string | null;
   created_at: string;
   updated_at: string;
 }

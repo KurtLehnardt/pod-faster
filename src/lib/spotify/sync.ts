@@ -9,6 +9,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchAllSavedShows } from "./client";
 import { getValidAccessToken } from "./tokens";
+import { discoverRssFeedUrl } from "@/lib/rss/discover";
 import type {
   SpotifyShow,
   SpotifySubscription,
@@ -185,6 +186,9 @@ export async function syncSubscriptions(userId: string): Promise<SyncResult> {
     }
   }
 
+  // 7. Create/update podcast_feeds entries for Spotify shows
+  await syncSpotifyFeeds(supabase, userId, spotifyShows, idsToRemove, existingByShowId, errors);
+
   if (errors.length > 0) {
     console.error(
       `Sync completed with ${errors.length} error(s):`,
@@ -198,6 +202,117 @@ export async function syncSubscriptions(userId: string): Promise<SyncResult> {
     unchanged,
     total: spotifyShows.length,
   };
+}
+
+/**
+ * Create or update podcast_feeds entries for Spotify-synced shows.
+ * Discovers RSS feed URLs via iTunes Search API and creates feed entries
+ * so Spotify podcasts appear alongside imported feeds.
+ */
+async function syncSpotifyFeeds(
+  supabase: ReturnType<typeof createAdminClient>,
+  userId: string,
+  spotifyShows: SpotifyShow[],
+  removedSubscriptionIds: string[],
+  existingByShowId: Map<string, SpotifySubscription>,
+  errors: string[]
+): Promise<void> {
+  // Load existing Spotify-sourced feeds for this user
+  const { data: existingFeeds } = await supabase
+    .from("podcast_feeds")
+    .select("id, spotify_show_id, feed_url, is_active")
+    .eq("user_id", userId)
+    .eq("source", "spotify");
+
+  const feedByShowId = new Map<string, { id: string; feed_url: string; is_active: boolean }>();
+  for (const f of existingFeeds ?? []) {
+    if (f.spotify_show_id) {
+      feedByShowId.set(f.spotify_show_id, f);
+    }
+  }
+
+  // Create feeds for new Spotify shows (ones that don't have a podcast_feed yet)
+  for (const show of spotifyShows) {
+    if (feedByShowId.has(show.id)) {
+      // Feed already exists — reactivate if it was deactivated
+      const existing = feedByShowId.get(show.id)!;
+      if (!existing.is_active) {
+        await supabase
+          .from("podcast_feeds")
+          .update({ is_active: true })
+          .eq("id", existing.id);
+      }
+      continue;
+    }
+
+    const imageUrl = show.images?.[0]?.url ?? null;
+
+    // Discover RSS feed URL via iTunes
+    const rssUrl = await discoverRssFeedUrl(show.name, show.publisher);
+
+    if (rssUrl) {
+      // Check if this RSS URL already exists for this user (imported manually)
+      const { data: existingRss } = await supabase
+        .from("podcast_feeds")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("feed_url", rssUrl)
+        .maybeSingle();
+
+      if (existingRss) {
+        // RSS feed already exists — link it to this Spotify show
+        await supabase
+          .from("podcast_feeds")
+          .update({ source: "spotify", spotify_show_id: show.id })
+          .eq("id", existingRss.id);
+        continue;
+      }
+    }
+
+    // Create new feed entry
+    const { error: insertError } = await supabase
+      .from("podcast_feeds")
+      .insert({
+        user_id: userId,
+        feed_url: rssUrl ?? show.external_urls.spotify,
+        title: show.name,
+        description: show.description,
+        image_url: imageUrl,
+        source: "spotify",
+        spotify_show_id: show.id,
+        is_active: true,
+        poll_error: rssUrl ? null : "RSS feed not found — episodes cannot be polled automatically",
+        poll_error_count: rssUrl ? 0 : 1,
+      });
+
+    if (insertError) {
+      errors.push(`Feed creation for "${show.name}": ${insertError.message}`);
+    }
+  }
+
+  // Deactivate feeds for removed Spotify subscriptions
+  if (removedSubscriptionIds.length > 0) {
+    // Get the spotify_show_ids for removed subscriptions
+    const removedShowIds: string[] = [];
+    for (const [showId, sub] of existingByShowId) {
+      if (removedSubscriptionIds.includes(sub.id)) {
+        removedShowIds.push(showId);
+      }
+    }
+
+    if (removedShowIds.length > 0) {
+      const { error: deactivateError } = await supabase
+        .from("podcast_feeds")
+        .update({ is_active: false })
+        .eq("user_id", userId)
+        .eq("source", "spotify")
+        .in("spotify_show_id", removedShowIds);
+
+      if (deactivateError) {
+        errors.push(`Feed deactivation: ${deactivateError.message}`);
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
