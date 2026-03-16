@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -30,6 +30,15 @@ export default function FeedDetailPage({
   const { deleteFeed, loading: deleting } = useDeleteFeed();
   const { updateFeed } = useUpdateFeed();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Optimistic override for active toggle to avoid full-page re-render
+  const [activeOverride, setActiveOverride] = useState<boolean | null>(null);
+
+  // Clear optimistic override once server data catches up
+  useEffect(() => {
+    if (feed && activeOverride !== null && feed.is_active === activeOverride) {
+      setActiveOverride(null);
+    }
+  }, [feed, activeOverride]);
 
   async function handlePoll() {
     try {
@@ -54,13 +63,20 @@ export default function FeedDetailPage({
   }
 
   async function handleToggleActive(checked: boolean) {
+    // Optimistic update: immediately show the new state
+    setActiveOverride(checked);
     try {
       await updateFeed(id, { is_active: checked });
+      // Sync the underlying data without visible blink
       refresh();
     } catch {
-      // handled by hook
+      // Revert optimistic update on failure
+      setActiveOverride(null);
     }
   }
+
+  // Use optimistic value if set, otherwise use server value
+  const isActive = activeOverride ?? feed?.is_active ?? false;
 
   if (loading) {
     return (
@@ -122,10 +138,10 @@ export default function FeedDetailPage({
         <div className="flex items-center gap-2">
           <Switch
             id="feed-active"
-            checked={feed.is_active}
+            checked={isActive}
             onCheckedChange={handleToggleActive}
           />
-          <Label htmlFor="feed-active">{feed.is_active ? "Active" : "Paused"}</Label>
+          <Label htmlFor="feed-active">{isActive ? "Active" : "Paused"}</Label>
         </div>
         <Badge variant="secondary">{episodes.length} episodes</Badge>
         <div className="flex-1" />
