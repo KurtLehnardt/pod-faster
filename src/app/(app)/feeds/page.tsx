@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { Suspense, useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { Plus, RefreshCw, Loader2, Podcast, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,31 @@ const FILTER_OPTIONS: { value: FeedFilter; label: string }[] = [
   { value: "error", label: "Has Errors" },
 ];
 
-export default function FeedsPage() {
+/**
+ * Check if ALL search words appear somewhere in the feed metadata.
+ * Uses word-boundary (AND) logic instead of simple substring matching.
+ */
+function matchesSearch(
+  query: string,
+  title?: string | null,
+  description?: string | null,
+  feedUrl?: string
+): boolean {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return true;
+
+  const haystack = [
+    title ?? "",
+    description ?? "",
+    feedUrl ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return words.every((word) => haystack.includes(word));
+}
+
+function FeedsPageContent() {
   const searchParams = useSearchParams();
   const initialSearch = searchParams.get("search") ?? "";
   const { feeds, loading, error, refresh } = useFeeds();
@@ -45,14 +69,10 @@ export default function FeedsPage() {
         break;
     }
 
-    // Apply text search filter
+    // Apply text search filter (AND logic: all words must appear)
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (f) =>
-          (f.title?.toLowerCase().includes(q) ?? false) ||
-          (f.description?.toLowerCase().includes(q) ?? false) ||
-          f.feed_url.toLowerCase().includes(q)
+      result = result.filter((f) =>
+        matchesSearch(searchQuery, f.title, f.description, f.feed_url)
       );
     }
 
@@ -151,5 +171,13 @@ export default function FeedsPage() {
         onOpenChange={setEpisodeDialogOpen}
       />
     </div>
+  );
+}
+
+export default function FeedsPage() {
+  return (
+    <Suspense fallback={null}>
+      <FeedsPageContent />
+    </Suspense>
   );
 }
