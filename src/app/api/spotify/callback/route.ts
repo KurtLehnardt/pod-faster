@@ -73,8 +73,8 @@ export async function GET(request: NextRequest) {
     const profile = await fetchUserProfile(tokens.access_token);
     await storeTokens(user.id, tokens, profile);
 
-    // 5. Fire-and-forget initial sync
-    syncSubscriptions(user.id).catch(console.error);
+    // 5. Initial sync (must await on serverless — execution may terminate otherwise)
+    await syncSubscriptions(user.id);
 
     // 6. Redirect to settings, clear cookie
     const response = NextResponse.redirect(
