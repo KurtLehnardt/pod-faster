@@ -35,16 +35,6 @@ export interface SpotifyPaginatedResponse<T> {
   total: number;
 }
 
-/** @deprecated Use SpotifyPaginatedResponse<SpotifySavedShowItem> instead */
-export interface SpotifyShowsResponse {
-  href: string;
-  items: { added_at: string; show: SpotifyShow }[];
-  limit: number;
-  next: string | null;
-  offset: number;
-  total: number;
-}
-
 export interface SpotifyTokenResponse {
   access_token: string;
   token_type: string;
