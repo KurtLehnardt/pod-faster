@@ -30,6 +30,31 @@ export interface FeatureAccessResult {
 }
 
 /**
+ * Fetch a user's subscription tier.
+ *
+ * Returns "free" if the user or tier cannot be resolved.
+ */
+export async function getUserTier(userId: string): Promise<SubscriptionTier> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("subscription_tier")
+    .eq("id", userId)
+    .single();
+
+  if (error || !data) {
+    console.error(
+      `[feature-gate] Failed to fetch tier for user ${userId}:`,
+      error,
+    );
+    return "free";
+  }
+
+  const rawTier = data.subscription_tier ?? "free";
+  return rawTier in TIER_HIERARCHY ? rawTier : "free";
+}
+
+/**
  * Check whether a user has access to a given feature based on their
  * subscription tier.
  */

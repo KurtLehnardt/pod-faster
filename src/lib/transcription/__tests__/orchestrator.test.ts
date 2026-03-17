@@ -1,23 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Mock Supabase admin client ──────────────────────────────
 
-const mockSelect = vi.fn();
-const mockEq = vi.fn();
-const mockGte = vi.fn();
-const mockUpdate = vi.fn();
-
-// Chain builder for select queries
-function createSelectChain(data: unknown[] | null, error: { message: string } | null = null) {
-  const chain = {
-    select: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    gte: vi.fn().mockReturnValue({ data, error }),
-  };
-  return chain;
-}
-
-// Chain builder for update queries
 function createUpdateChain(error: { message: string } | null = null) {
   const chain = {
     update: vi.fn().mockReturnThis(),
@@ -26,28 +10,10 @@ function createUpdateChain(error: { message: string } | null = null) {
   return chain;
 }
 
-let selectChain: ReturnType<typeof createSelectChain>;
 let updateChain: ReturnType<typeof createUpdateChain>;
 
 const mockFrom = vi.fn().mockImplementation(() => {
-  // Return the appropriate chain based on which method is called next
   return {
-    select: (...args: unknown[]) => {
-      selectChain.select(...args);
-      return {
-        eq: (...eqArgs: unknown[]) => {
-          selectChain.eq(...eqArgs);
-          return {
-            eq: (...eq2Args: unknown[]) => {
-              selectChain.eq(...eq2Args);
-              return {
-                gte: (...gteArgs: unknown[]) => selectChain.gte(...gteArgs),
-              };
-            },
-          };
-        },
-      };
-    },
     update: (...args: unknown[]) => {
       updateChain.update(...args);
       return {
@@ -61,183 +27,164 @@ vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => ({ from: mockFrom }),
 }));
 
-// ── Mock transcribeAudio ────────────────────────────────────
+// ── Mock tier-budget ────────────────────────────────────────
+
+const mockCheckTierBudget = vi.fn();
+vi.mock("../tier-budget", () => ({
+  checkTierBudget: (...args: unknown[]) => mockCheckTierBudget(...args),
+}));
+
+// ── Mock elevenlabs-stt ─────────────────────────────────────
 
 const mockTranscribeAudio = vi.fn();
+const mockTranscribeAudioBlob = vi.fn();
+const mockCalculateSttCost = vi.fn();
+
 vi.mock("../elevenlabs-stt", () => ({
   transcribeAudio: (...args: unknown[]) => mockTranscribeAudio(...args),
+  transcribeAudioBlob: (...args: unknown[]) => mockTranscribeAudioBlob(...args),
+  calculateSttCost: (...args: unknown[]) => mockCalculateSttCost(...args),
+}));
+
+// ── Mock audio-slicer ───────────────────────────────────────
+
+const mockSliceAudio = vi.fn();
+vi.mock("../audio-slicer", () => ({
+  sliceAudio: (...args: unknown[]) => mockSliceAudio(...args),
 }));
 
 import {
-  checkSttBudget,
   processTranscription,
   type TranscriptionJob,
 } from "../orchestrator";
 
-// ── Setup / teardown ────────────────────────────────────────
-
-const originalSttLimit = process.env.STT_DAILY_LIMIT_MINUTES;
+// ── Setup ───────────────────────────────────────────────────
 
 beforeEach(() => {
-  vi.restoreAllMocks();
+  vi.clearAllMocks();
   mockFrom.mockClear();
-  mockTranscribeAudio.mockReset();
-  selectChain = createSelectChain([]);
   updateChain = createUpdateChain(null);
-  delete process.env.STT_DAILY_LIMIT_MINUTES;
+  mockCheckTierBudget.mockReset();
+  mockTranscribeAudio.mockReset();
+  mockTranscribeAudioBlob.mockReset();
+  mockCalculateSttCost.mockReset();
+  mockSliceAudio.mockReset();
+
+  // Default: calculateSttCost returns something reasonable
+  mockCalculateSttCost.mockReturnValue(3.35);
 });
 
-afterEach(() => {
-  if (originalSttLimit !== undefined) {
-    process.env.STT_DAILY_LIMIT_MINUTES = originalSttLimit;
-  } else {
-    delete process.env.STT_DAILY_LIMIT_MINUTES;
-  }
-});
-
-// ── checkSttBudget ──────────────────────────────────────────
-
-describe("checkSttBudget", () => {
-  it("returns allowed when usage is under the default limit", async () => {
-    // 30 minutes used (1800 seconds across 2 episodes)
-    selectChain = createSelectChain([
-      { duration_seconds: 900 },
-      { duration_seconds: 900 },
-    ]);
-
-    const result = await checkSttBudget("user-123");
-
-    expect(result.allowed).toBe(true);
-    expect(result.usedMinutes).toBe(30);
-    expect(result.limitMinutes).toBe(120);
-    expect(result.remainingMinutes).toBe(90);
+/** Helper: mock budget check as allowed. */
+function budgetAllowed() {
+  mockCheckTierBudget.mockResolvedValue({
+    allowed: true,
+    reason: null,
+    usedCentsThisMonth: 50,
+    remainingCents: 950,
+    weeklyClipsUsed: 0,
   });
+}
 
-  it("returns not allowed when usage exceeds limit", async () => {
-    // 120 minutes used (7200 seconds)
-    selectChain = createSelectChain([{ duration_seconds: 7200 }]);
-
-    const result = await checkSttBudget("user-123");
-
-    expect(result.allowed).toBe(false);
-    expect(result.usedMinutes).toBe(120);
-    expect(result.remainingMinutes).toBe(0);
+/** Helper: mock budget check as denied. */
+function budgetDenied(reason: string) {
+  mockCheckTierBudget.mockResolvedValue({
+    allowed: false,
+    reason,
+    usedCentsThisMonth: 1000,
+    remainingCents: 0,
+    weeklyClipsUsed: 1,
   });
-
-  it("returns allowed with zero usage", async () => {
-    selectChain = createSelectChain([]);
-
-    const result = await checkSttBudget("user-123");
-
-    expect(result.allowed).toBe(true);
-    expect(result.usedMinutes).toBe(0);
-    expect(result.limitMinutes).toBe(120);
-    expect(result.remainingMinutes).toBe(120);
-  });
-
-  it("uses STT_DAILY_LIMIT_MINUTES from env", async () => {
-    process.env.STT_DAILY_LIMIT_MINUTES = "60";
-    selectChain = createSelectChain([{ duration_seconds: 3000 }]);
-
-    const result = await checkSttBudget("user-123");
-
-    expect(result.limitMinutes).toBe(60);
-    expect(result.usedMinutes).toBe(50);
-    expect(result.remainingMinutes).toBe(10);
-    expect(result.allowed).toBe(true);
-  });
-
-  it("defaults limit when STT_DAILY_LIMIT_MINUTES is invalid", async () => {
-    process.env.STT_DAILY_LIMIT_MINUTES = "not-a-number";
-    selectChain = createSelectChain([]);
-
-    const result = await checkSttBudget("user-123");
-
-    expect(result.limitMinutes).toBe(120);
-  });
-
-  it("handles null duration_seconds gracefully", async () => {
-    selectChain = createSelectChain([
-      { duration_seconds: null },
-      { duration_seconds: 600 },
-      { duration_seconds: null },
-    ]);
-
-    const result = await checkSttBudget("user-123");
-
-    expect(result.usedMinutes).toBe(10);
-    expect(result.allowed).toBe(true);
-  });
-
-  it("throws on Supabase query error", async () => {
-    selectChain = createSelectChain(null, {
-      message: "connection refused",
-    });
-
-    await expect(checkSttBudget("user-123")).rejects.toThrow(
-      "Failed to check STT budget: connection refused"
-    );
-  });
-});
+}
 
 // ── processTranscription ────────────────────────────────────
 
 describe("processTranscription", () => {
-  const baseJob: TranscriptionJob = {
+  const proJob: TranscriptionJob = {
     feedEpisodeId: "ep-001",
     userId: "user-123",
     audioUrl: "https://example.com/episode.mp3",
     durationSeconds: 300,
+    tier: "pro",
   };
 
-  it("transcribes successfully and updates DB", async () => {
-    // Budget check: no usage
-    selectChain = createSelectChain([]);
-    updateChain = createUpdateChain(null);
+  const freeJob: TranscriptionJob = {
+    feedEpisodeId: "ep-002",
+    userId: "user-456",
+    audioUrl: "https://example.com/episode.mp3",
+    durationSeconds: 3600,
+    tier: "free",
+  };
 
+  it("pro tier: full transcription success", async () => {
+    budgetAllowed();
     mockTranscribeAudio.mockResolvedValue({
-      text: "Transcribed text content.",
+      text: "Full transcript text.",
       durationSeconds: 300,
       costCents: 3.35,
     });
 
-    const result = await processTranscription(baseJob);
+    const result = await processTranscription(proJob);
 
     expect(result.success).toBe(true);
-    expect(result.transcript).toBe("Transcribed text content.");
+    expect(result.transcript).toBe("Full transcript text.");
     expect(result.costCents).toBe(3.35);
+    expect(result.isPartial).toBe(false);
+    expect(result.clipRange).toBeNull();
     expect(result.error).toBeNull();
 
-    // Should have called transcribeAudio with the right URL
-    expect(mockTranscribeAudio).toHaveBeenCalledWith(
-      "https://example.com/episode.mp3"
-    );
+    expect(mockTranscribeAudio).toHaveBeenCalledWith(proJob.audioUrl);
+    expect(mockSliceAudio).not.toHaveBeenCalled();
+    expect(mockTranscribeAudioBlob).not.toHaveBeenCalled();
+  });
+
+  it("free tier: partial transcription via sliceAudio + transcribeAudioBlob", async () => {
+    budgetAllowed();
+    const fakeBlob = new Blob([new Uint8Array([0xff])]);
+    mockSliceAudio.mockResolvedValue({
+      audioBlob: fakeBlob,
+      startSeconds: 300,
+      endSeconds: 600,
+    });
+    mockTranscribeAudioBlob.mockResolvedValue({
+      text: "Partial clip text.",
+      durationSeconds: 295,
+      costCents: 3.35,
+    });
+
+    const result = await processTranscription(freeJob);
+
+    expect(result.success).toBe(true);
+    expect(result.transcript).toBe("Partial clip text.");
+    expect(result.isPartial).toBe(true);
+    expect(result.clipRange).toBe("300-600");
+    expect(result.error).toBeNull();
+
+    expect(mockSliceAudio).toHaveBeenCalledWith(freeJob.audioUrl, freeJob.durationSeconds);
+    expect(mockTranscribeAudioBlob).toHaveBeenCalledWith(fakeBlob);
+    expect(mockTranscribeAudio).not.toHaveBeenCalled();
   });
 
   it("returns error when budget is exceeded", async () => {
-    // Budget check: over limit
-    selectChain = createSelectChain([{ duration_seconds: 7200 }]);
+    budgetDenied("Monthly cap reached for pro tier");
 
-    const result = await processTranscription(baseJob);
+    const result = await processTranscription(proJob);
 
     expect(result.success).toBe(false);
     expect(result.transcript).toBeNull();
     expect(result.costCents).toBe(0);
-    expect(result.error).toBe("Daily STT budget exceeded");
+    expect(result.error).toBe("Monthly cap reached for pro tier");
 
-    // Should NOT have called transcribeAudio
     expect(mockTranscribeAudio).not.toHaveBeenCalled();
+    expect(mockSliceAudio).not.toHaveBeenCalled();
   });
 
   it("handles transcription failure and sets error status", async () => {
-    selectChain = createSelectChain([]);
-    updateChain = createUpdateChain(null);
-
+    budgetAllowed();
     mockTranscribeAudio.mockRejectedValue(
       new Error("ElevenLabs API error: 500 Internal Server Error")
     );
 
-    const result = await processTranscription(baseJob);
+    const result = await processTranscription(proJob);
 
     expect(result.success).toBe(false);
     expect(result.transcript).toBeNull();
@@ -245,17 +192,50 @@ describe("processTranscription", () => {
     expect(result.error).toBe(
       "ElevenLabs API error: 500 Internal Server Error"
     );
+    expect(result.isPartial).toBe(false);
   });
 
   it("handles non-Error thrown from transcription", async () => {
-    selectChain = createSelectChain([]);
-    updateChain = createUpdateChain(null);
-
+    budgetAllowed();
     mockTranscribeAudio.mockRejectedValue("string error");
 
-    const result = await processTranscription(baseJob);
+    const result = await processTranscription(proJob);
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("string error");
+  });
+
+  it("calls checkTierBudget with correct tier and estimated cost", async () => {
+    budgetAllowed();
+    mockCalculateSttCost.mockReturnValue(3.35);
+    mockTranscribeAudio.mockResolvedValue({
+      text: "text",
+      durationSeconds: 300,
+      costCents: 3.35,
+    });
+
+    await processTranscription(proJob);
+
+    expect(mockCheckTierBudget).toHaveBeenCalledWith("user-123", "pro", 3.35);
+  });
+
+  it("free tier uses clipped duration for cost estimation", async () => {
+    budgetAllowed();
+    mockCalculateSttCost.mockReturnValue(3.35);
+    mockSliceAudio.mockResolvedValue({
+      audioBlob: new Blob([]),
+      startSeconds: 300,
+      endSeconds: 600,
+    });
+    mockTranscribeAudioBlob.mockResolvedValue({
+      text: "clip",
+      durationSeconds: 300,
+      costCents: 3.35,
+    });
+
+    await processTranscription(freeJob);
+
+    // For free tier with 3600s episode, should estimate cost for 300s (clip), not 3600s
+    expect(mockCalculateSttCost).toHaveBeenCalledWith(300);
   });
 });

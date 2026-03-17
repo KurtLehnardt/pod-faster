@@ -14,6 +14,7 @@ vi.mock("@/lib/elevenlabs/client", async (importOriginal) => {
 
 import {
   transcribeAudio,
+  transcribeAudioBlob,
   calculateSttCost,
 } from "../elevenlabs-stt";
 import { ElevenLabsError } from "@/lib/elevenlabs/client";
@@ -247,5 +248,61 @@ describe("transcribeAudio", () => {
     expect(error).toBeInstanceOf(ElevenLabsError);
     expect((error as ElevenLabsError).message).toContain("Network error");
     expect((error as ElevenLabsError).status).toBe(500);
+  });
+});
+
+// ── transcribeAudioBlob ─────────────────────────────────────
+
+describe("transcribeAudioBlob", () => {
+  it("sends blob via FormData and returns result", async () => {
+    const sttResponse = {
+      text: "Blob transcription result.",
+      words: [
+        { text: "Blob", start: 0.0, end: 0.5, type: "word" },
+        { text: "transcription", start: 0.5, end: 1.5, type: "word" },
+        { text: "result.", start: 1.5, end: 120.0, type: "word" },
+      ],
+    };
+
+    mockElevenLabsFetch.mockResolvedValue(
+      new Response(JSON.stringify(sttResponse), { status: 200 })
+    );
+
+    const blob = new Blob([new Uint8Array([0xff, 0xfb])], {
+      type: "audio/mpeg",
+    });
+
+    const result = await transcribeAudioBlob(blob);
+
+    expect(result.text).toBe("Blob transcription result.");
+    expect(result.durationSeconds).toBe(120.0);
+    // ceil(120/60) = 2 minutes -> 2 * 0.67 = 1.34
+    expect(result.costCents).toBeCloseTo(1.34);
+
+    // Verify FormData has "audio" key (not "cloud_storage_url")
+    expect(mockElevenLabsFetch).toHaveBeenCalledOnce();
+    expect(mockElevenLabsFetch.mock.calls[0][0]).toBe("/speech-to-text");
+    const body = mockElevenLabsFetch.mock.calls[0][1].body as FormData;
+    expect(body.get("audio")).toBeInstanceOf(Blob);
+    expect(body.get("model_id")).toBe("scribe_v2");
+    expect(body.get("cloud_storage_url")).toBeNull();
+  });
+
+  it("uses top-level duration when no word timestamps", async () => {
+    const sttResponse = {
+      text: "No timestamps here.",
+      duration: 60.5,
+    };
+
+    mockElevenLabsFetch.mockResolvedValue(
+      new Response(JSON.stringify(sttResponse), { status: 200 })
+    );
+
+    const blob = new Blob([new Uint8Array([0xff])]);
+    const result = await transcribeAudioBlob(blob);
+
+    expect(result.durationSeconds).toBe(60.5);
+    // ceil(60.5/60) = 2 minutes -> 2 * 0.67 = 1.34
+    expect(result.costCents).toBeCloseTo(1.34);
   });
 });

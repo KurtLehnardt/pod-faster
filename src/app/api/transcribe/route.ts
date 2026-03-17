@@ -4,16 +4,17 @@
  * POST /api/transcribe
  * Body: { feedEpisodeId: string }
  *
- * Validates ownership, budget, and episode state before processing.
+ * Validates ownership, tier budget, and episode state before processing.
+ * Free users get a 5-min preview; Pro/Premium get full transcription.
+ * Partial transcripts can be re-transcribed after upgrading.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth/require-auth";
+import { getUserTier } from "@/lib/auth/feature-gate";
 import { triggerTranscriptionSchema } from "@/lib/validation/feed-schemas";
-import {
-  processTranscription,
-  checkSttBudget,
-} from "@/lib/transcription/orchestrator";
+import { checkTierBudget } from "@/lib/transcription/tier-budget";
+import { processTranscription } from "@/lib/transcription/orchestrator";
 
 // Allow up to 300s for long audio files
 export const maxDuration = 300;
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
   // Fetch episode and verify ownership through the feed relationship
   const { data: episode, error: episodeError } = await supabase
     .from("feed_episodes")
-    .select("id, feed_id, user_id, audio_url, transcription_status, duration_seconds")
+    .select("id, feed_id, user_id, audio_url, transcription_status, duration_seconds, is_partial_transcript")
     .eq("id", feedEpisodeId)
     .single();
 
@@ -73,29 +74,37 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Check transcription status -- only allow 'none' or 'failed'
+  // Check transcription status — allow 'none', 'failed', or re-transcription of partials
+  const isPartialRetranscribe =
+    episode.transcription_status === "completed" && episode.is_partial_transcript;
+
   if (
     episode.transcription_status !== "none" &&
-    episode.transcription_status !== "failed"
+    episode.transcription_status !== "failed" &&
+    !isPartialRetranscribe
   ) {
     return NextResponse.json(
       {
-        error: `Transcription is already ${episode.transcription_status}. Only episodes with status 'none' or 'failed' can be transcribed.`,
+        error: `Transcription is already ${episode.transcription_status}. Only episodes with status 'none', 'failed', or partial transcripts can be transcribed.`,
       },
       { status: 409 }
     );
   }
 
-  // Check STT budget
-  const budget = await checkSttBudget(user.id);
+  // Fetch user's tier
+  const tier = await getUserTier(user.id);
+
+  // Check tier budget
+  const budget = await checkTierBudget(user.id, tier);
   if (!budget.allowed) {
     return NextResponse.json(
       {
-        error: "Daily STT budget exceeded",
+        error: budget.reason ?? "Transcription budget exceeded",
         budget: {
-          usedMinutes: budget.usedMinutes,
-          limitMinutes: budget.limitMinutes,
-          remainingMinutes: budget.remainingMinutes,
+          usedCentsThisMonth: budget.usedCentsThisMonth,
+          remainingCents: budget.remainingCents,
+          weeklyClipsUsed: budget.weeklyClipsUsed,
+          tier,
         },
       },
       { status: 429 }
@@ -109,15 +118,23 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       audioUrl: episode.audio_url,
       durationSeconds: episode.duration_seconds,
+      tier,
     });
 
     if (!result.success) {
       console.error("[transcribe] Transcription failed:", result.error);
       return NextResponse.json(
-        { error: "Internal server error" },
+        { error: "Transcription failed" },
         { status: 500 }
       );
     }
+
+    return NextResponse.json({
+      started: true,
+      feedEpisodeId: episode.id,
+      isPartial: result.isPartial,
+      clipRange: result.clipRange,
+    });
   } catch (err) {
     console.error("[transcribe] Unexpected error:", err);
     return NextResponse.json(
@@ -125,9 +142,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-
-  return NextResponse.json({
-    started: true,
-    feedEpisodeId: episode.id,
-  });
 }
