@@ -157,7 +157,11 @@ describe("Spotify API Routes", () => {
       process.env.SPOTIFY_CLIENT_ID = "test-client-id";
       process.env.SPOTIFY_REDIRECT_URI = "http://localhost:3000/api/spotify/callback";
 
-      const res = await POST(new Request("http://localhost:3000/api/spotify/connect", { method: "POST" }));
+      const { NextRequest } = await import("next/server");
+      const res = await POST(new NextRequest("http://localhost:3000/api/spotify/connect", {
+        method: "POST",
+        headers: { host: "localhost:3000" },
+      }));
       expect(res.status).toBe(200);
 
       const data = await res.json();
@@ -166,7 +170,7 @@ describe("Spotify API Routes", () => {
       expect(data.url).toContain("client_id=test-client-id");
       expect(data.url).toContain("response_type=code");
       expect(data.url).toContain("code_challenge_method=S256");
-      expect(data.url).toContain("scope=user-library-read");
+      expect(data.url).toContain("user-library-read");
       expect(data.url).toContain("state=");
       expect(data.url).toContain("code_challenge=");
 
@@ -292,10 +296,11 @@ describe("Spotify API Routes", () => {
       const location = res.headers.get("location");
       expect(location).toContain("spotify=connected");
 
-      // Verify the exchange was called with the right args
+      // Verify the exchange was called with the right args (3-arg form: code, verifier, redirectUri)
       expect(mockExchangeCodeForTokens).toHaveBeenCalledWith(
         "auth-code",
-        "test-verifier"
+        "test-verifier",
+        "http://localhost/api/spotify/callback"
       );
       expect(mockFetchUserProfile).toHaveBeenCalledWith("sp-access-token");
       expect(mockStoreTokens).toHaveBeenCalledWith(

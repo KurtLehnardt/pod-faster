@@ -304,6 +304,11 @@ describe("API Route Validation", () => {
       };
 
       mockFromChain.mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            gte: vi.fn().mockResolvedValue({ count: 0, error: null }),
+          }),
+        }),
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({
