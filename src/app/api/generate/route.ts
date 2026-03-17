@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
       voice_config: unknown;
       source_type: "topic" | "feed_summary";
       sources: unknown;
+      language: string;
     }>();
 
   if (error || !episode) {
@@ -113,6 +114,7 @@ export async function POST(request: NextRequest) {
       tone: episode.tone as EpisodeTone,
       lengthMinutes: episode.length_minutes,
       voiceConfig,
+      language: episode.language ?? "en",
     });
   } else {
     await runPipeline({
@@ -123,6 +125,7 @@ export async function POST(request: NextRequest) {
       tone: episode.tone as EpisodeTone,
       lengthMinutes: episode.length_minutes,
       voiceConfig,
+      language: episode.language ?? "en",
     });
   }
 

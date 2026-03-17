@@ -34,6 +34,7 @@ export interface PipelineParams {
   tone: EpisodeTone;
   lengthMinutes: number;
   voiceConfig: VoiceConfig;
+  language: string;
 }
 
 /**
@@ -96,6 +97,7 @@ export async function runPipeline(params: PipelineParams): Promise<void> {
     tone,
     lengthMinutes,
     voiceConfig,
+    language,
   } = params;
 
   let totalTokens = 0;
@@ -126,6 +128,7 @@ export async function runPipeline(params: PipelineParams): Promise<void> {
       tone,
       lengthMinutes,
       voiceConfig,
+      language,
     });
     totalTokens += scriptTokens;
     await updateEpisode(episodeId, {
@@ -139,6 +142,7 @@ export async function runPipeline(params: PipelineParams): Promise<void> {
     const { audio, charactersUsed } = await audioStep({
       script,
       style,
+      language,
     });
     await updateEpisode(episodeId, {
       elevenlabs_characters_used: charactersUsed,

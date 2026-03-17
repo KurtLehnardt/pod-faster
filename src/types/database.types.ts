@@ -159,6 +159,7 @@ export interface Database {
           elevenlabs_characters_used: number;
           source_type: EpisodeSourceType;
           summary_config_id: string | null;
+          language: string;
           created_at: string;
           completed_at: string | null;
         };
@@ -182,6 +183,7 @@ export interface Database {
           elevenlabs_characters_used?: number;
           source_type?: EpisodeSourceType;
           summary_config_id?: string | null;
+          language?: string;
           created_at?: string;
           completed_at?: string | null;
         };
@@ -205,6 +207,7 @@ export interface Database {
           elevenlabs_characters_used?: number;
           source_type?: EpisodeSourceType;
           summary_config_id?: string | null;
+          language?: string;
           created_at?: string;
           completed_at?: string | null;
         };

@@ -6,6 +6,20 @@ export type EpisodeTone =
   | "lighthearted"
   | "dark_mystery"
   | "business_news";
+export type EpisodeLanguage =
+  | "en"
+  | "de"
+  | "es"
+  | "fr"
+  | "pt"
+  | "it"
+  | "nl"
+  | "pl"
+  | "ja"
+  | "ko"
+  | "zh"
+  | "hi"
+  | "ar";
 export type EpisodeStatus =
   | "pending"
   | "searching"
@@ -15,6 +29,22 @@ export type EpisodeStatus =
   | "uploading"
   | "completed"
   | "failed";
+
+export const LANGUAGE_OPTIONS: { code: EpisodeLanguage; label: string }[] = [
+  { code: "en", label: "English" },
+  { code: "de", label: "German" },
+  { code: "es", label: "Spanish" },
+  { code: "fr", label: "French" },
+  { code: "pt", label: "Portuguese" },
+  { code: "it", label: "Italian" },
+  { code: "nl", label: "Dutch" },
+  { code: "pl", label: "Polish" },
+  { code: "ja", label: "Japanese" },
+  { code: "ko", label: "Korean" },
+  { code: "zh", label: "Chinese" },
+  { code: "hi", label: "Hindi" },
+  { code: "ar", label: "Arabic" },
+];
 
 export interface ScriptSegment {
   speaker: string;

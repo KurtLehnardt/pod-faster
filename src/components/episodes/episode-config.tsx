@@ -19,7 +19,8 @@ import { VoicePicker, type VoiceAssignment } from "./voice-picker";
 import { GenerationProgress } from "./generation-progress";
 import { useFeeds } from "@/lib/hooks/use-feeds";
 import { createClient } from "@/lib/supabase/client";
-import type { EpisodeStyle, EpisodeTone } from "@/types/episode";
+import type { EpisodeStyle, EpisodeTone, EpisodeLanguage } from "@/types/episode";
+import { LANGUAGE_OPTIONS } from "@/types/episode";
 
 interface TopicItem {
   id: string;
@@ -94,6 +95,7 @@ export function EpisodeConfig({
   const [lengthMinutes, setLengthMinutes] = useState(5);
   const [style, setStyle] = useState<EpisodeStyle>("monologue");
   const [tone, setTone] = useState<EpisodeTone>("serious");
+  const [language, setLanguage] = useState<EpisodeLanguage>("en");
   const [voiceAssignments, setVoiceAssignments] = useState<VoiceAssignment[]>(
     []
   );
@@ -266,6 +268,7 @@ export function EpisodeConfig({
               : undefined,
           excludeTopics:
             excludedNames.length > 0 ? excludedNames : undefined,
+          language,
           style,
           tone,
           lengthMinutes,
@@ -307,7 +310,7 @@ export function EpisodeConfig({
     } finally {
       setIsSubmitting(false);
     }
-  }, [isFormValid, isSubmitting, sourceMode, topic, selectedFeedIds, activeFeeds, availableTopics, includedTopicIds, excludedTopicIds, style, tone, lengthMinutes, voiceAssignments]);
+  }, [isFormValid, isSubmitting, sourceMode, topic, selectedFeedIds, activeFeeds, availableTopics, includedTopicIds, excludedTopicIds, language, style, tone, lengthMinutes, voiceAssignments]);
 
   const handleReset = useCallback(() => {
     setGeneratingEpisodeId(null);
@@ -320,6 +323,7 @@ export function EpisodeConfig({
     setLengthMinutes(5);
     setStyle("monologue");
     setTone("serious");
+    setLanguage("en");
     setVoiceAssignments([]);
   }, [initialTopic]);
 
@@ -558,10 +562,31 @@ export function EpisodeConfig({
                 setLengthMinutes(v);
               }}
               min={1}
-              max={30}
+              max={5}
               step={1}
             />
-            <span className="text-xs text-muted-foreground">30</span>
+            <span className="text-xs text-muted-foreground">5</span>
+          </div>
+        </div>
+
+        {/* Language selector */}
+        <div className="space-y-2">
+          <Label>Language</Label>
+          <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto">
+            {LANGUAGE_OPTIONS.map(({ code, label }) => (
+              <button
+                key={code}
+                type="button"
+                onClick={() => setLanguage(code)}
+                className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                  language === code
+                    ? "border-primary bg-primary/5 text-primary font-medium"
+                    : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
 

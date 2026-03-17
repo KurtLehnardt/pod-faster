@@ -70,6 +70,7 @@ const defaultParams: PipelineParams = {
   voiceConfig: {
     voices: [{ role: "Host", voice_id: "voice-host", name: "Alex" }],
   },
+  language: "en",
 };
 
 const fakeSources = [
@@ -137,19 +138,21 @@ describe("runPipeline", () => {
       // Step 2: summarize receives the sources from search
       expect(mockSummarizeStep).toHaveBeenCalledWith(fakeSources);
 
-      // Step 3: script receives summary + config
+      // Step 3: script receives summary + config + language
       expect(mockScriptStep).toHaveBeenCalledWith({
         summary: fakeSummary,
         style: "monologue",
         tone: "serious",
         lengthMinutes: 5,
         voiceConfig: defaultParams.voiceConfig,
+        language: "en",
       });
 
-      // Step 4: audio receives the script
+      // Step 4: audio receives the script + language
       expect(mockAudioStep).toHaveBeenCalledWith({
         script: fakeScript,
         style: "monologue",
+        language: "en",
       });
 
       // Step 5: storage receives the audio buffer + IDs

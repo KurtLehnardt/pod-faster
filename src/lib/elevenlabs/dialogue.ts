@@ -63,7 +63,9 @@ export async function textToDialogue(
   }
 
   // --- Fallback: sequential TTS + concatenation ---
-  return fallbackConcatenation(segments, totalChars);
+  // Pass raw caller-provided modelId (not the destructured default "eleven_v3")
+  // so English fallback uses the TTS default (eleven_turbo_v2_5) instead.
+  return fallbackConcatenation(segments, totalChars, params.modelId);
 }
 
 /**
@@ -72,7 +74,8 @@ export async function textToDialogue(
  */
 async function fallbackConcatenation(
   segments: DialogueSegment[],
-  totalChars: number
+  totalChars: number,
+  modelId?: string,
 ): Promise<DialogueResult> {
   const buffers: ArrayBuffer[] = [];
   const previousRequestIds: string[] = [];
@@ -81,6 +84,7 @@ async function fallbackConcatenation(
     const result = await textToSpeech({
       text: segment.text,
       voiceId: segment.voice_id,
+      modelId: modelId as import("./tts").TTSModelId | undefined,
       previousRequestIds: previousRequestIds.slice(-3), // ElevenLabs accepts up to 3
     });
 

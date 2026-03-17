@@ -77,66 +77,57 @@ function fakeAudioBuffer(size: number): ArrayBuffer {
 
 describe("audioStep", () => {
   describe("monologue style", () => {
-    it("calls textToSpeech for each segment sequentially", async () => {
-      mockTTS
-        .mockResolvedValueOnce({
-          audio: fakeAudioBuffer(100),
-          requestId: "req-1",
-          characterCount: 20,
-        })
-        .mockResolvedValueOnce({
-          audio: fakeAudioBuffer(150),
-          requestId: "req-2",
-          characterCount: 35,
-        });
+    it("makes a single TTS call with all segment texts joined", async () => {
+      mockTTS.mockResolvedValueOnce({
+        audio: fakeAudioBuffer(250),
+        requestId: "req-1",
+        characterCount: 55,
+      });
 
       const script = makeMonologueScript();
       const result = await audioStep({ script, style: "monologue" });
 
-      expect(mockTTS).toHaveBeenCalledTimes(2);
+      expect(mockTTS).toHaveBeenCalledTimes(1);
       expect(mockDialogue).not.toHaveBeenCalled();
 
-      // First call has no previous request IDs
+      // Single call with joined text, no previousRequestIds
       expect(mockTTS.mock.calls[0][0]).toEqual({
-        text: "Welcome to the show.",
+        text: "Welcome to the show.\n\nToday we discuss important topics.",
         voiceId: "voice-host",
-        previousRequestIds: [],
+        modelId: undefined,
       });
 
-      // Second call includes the first request ID for continuity
-      expect(mockTTS.mock.calls[1][0]).toEqual({
-        text: "Today we discuss important topics.",
-        voiceId: "voice-host",
-        previousRequestIds: ["req-1"],
-      });
+      expect(result.audio.byteLength).toBe(250);
 
-      // Audio buffers are concatenated
-      expect(result.audio.byteLength).toBe(250); // 100 + 150
-
-      // Character count is sum of all segment text lengths
       const expectedChars = "Welcome to the show.".length +
         "Today we discuss important topics.".length;
       expect(result.charactersUsed).toBe(expectedChars);
     });
 
-    it("handles segments where requestId is null", async () => {
-      mockTTS
-        .mockResolvedValueOnce({
-          audio: fakeAudioBuffer(50),
-          requestId: null,
-          characterCount: 10,
-        })
-        .mockResolvedValueOnce({
-          audio: fakeAudioBuffer(50),
-          requestId: "req-2",
-          characterCount: 10,
-        });
+    it("uses multilingual model for non-English language", async () => {
+      mockTTS.mockResolvedValueOnce({
+        audio: fakeAudioBuffer(200),
+        requestId: "req-1",
+        characterCount: 55,
+      });
 
       const script = makeMonologueScript();
-      await audioStep({ script, style: "monologue" });
+      await audioStep({ script, style: "monologue", language: "de" });
 
-      // Second call should have empty previousRequestIds since first was null
-      expect(mockTTS.mock.calls[1][0].previousRequestIds).toEqual([]);
+      expect(mockTTS.mock.calls[0][0].modelId).toBe("eleven_multilingual_v2");
+    });
+
+    it("uses default model for English language", async () => {
+      mockTTS.mockResolvedValueOnce({
+        audio: fakeAudioBuffer(200),
+        requestId: "req-1",
+        characterCount: 55,
+      });
+
+      const script = makeMonologueScript();
+      await audioStep({ script, style: "monologue", language: "en" });
+
+      expect(mockTTS.mock.calls[0][0].modelId).toBeUndefined();
     });
   });
 
@@ -168,6 +159,22 @@ describe("audioStep", () => {
         "Thanks for having me.".length +
         "Tell us more.".length;
       expect(result.charactersUsed).toBe(expectedChars);
+    });
+
+    it("passes multilingual model to dialogue API for non-English", async () => {
+      mockDialogue.mockResolvedValue({
+        audio: fakeAudioBuffer(500),
+        characterCount: 80,
+        usedDialogueApi: true,
+      });
+
+      const script = makeInterviewScript();
+      await audioStep({ script, style: "interview", language: "es" });
+
+      expect(mockDialogue.mock.calls[0][0]).toEqual({
+        segments: expect.any(Array),
+        modelId: "eleven_multilingual_v2",
+      });
     });
   });
 
@@ -218,48 +225,6 @@ describe("audioStep", () => {
       await expect(
         audioStep({ script, style: "interview" }),
       ).rejects.toThrow("Dialogue API error");
-    });
-  });
-
-  describe("voice continuity in monologue", () => {
-    it("passes at most 3 previous request IDs (sliding window)", async () => {
-      const script: EpisodeScript = {
-        title: "Long Monologue",
-        segments: Array.from({ length: 5 }, (_, i) => ({
-          speaker: "Host",
-          text: `Segment ${i + 1} text here.`,
-          voice_id: "voice-host",
-        })),
-      };
-
-      for (let i = 0; i < 5; i++) {
-        mockTTS.mockResolvedValueOnce({
-          audio: fakeAudioBuffer(10),
-          requestId: `req-${i + 1}`,
-          characterCount: 20,
-        });
-      }
-
-      await audioStep({ script, style: "monologue" });
-
-      // 1st call: no previous IDs
-      expect(mockTTS.mock.calls[0][0].previousRequestIds).toEqual([]);
-      // 2nd call: [req-1]
-      expect(mockTTS.mock.calls[1][0].previousRequestIds).toEqual(["req-1"]);
-      // 3rd call: [req-1, req-2]
-      expect(mockTTS.mock.calls[2][0].previousRequestIds).toEqual(["req-1", "req-2"]);
-      // 4th call: [req-1, req-2, req-3] (max 3)
-      expect(mockTTS.mock.calls[3][0].previousRequestIds).toEqual([
-        "req-1",
-        "req-2",
-        "req-3",
-      ]);
-      // 5th call: [req-2, req-3, req-4] (sliding window of last 3)
-      expect(mockTTS.mock.calls[4][0].previousRequestIds).toEqual([
-        "req-2",
-        "req-3",
-        "req-4",
-      ]);
     });
   });
 });

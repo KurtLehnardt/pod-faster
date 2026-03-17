@@ -14,7 +14,16 @@ import type {
   EpisodeScript,
   VoiceConfig,
 } from "@/types/episode";
+import { LANGUAGE_OPTIONS } from "@/types/episode";
 import type { NewsSummaryOutput } from "./news-summary";
+
+const LANGUAGE_NAME_MAP = new Map<string, string>(
+  LANGUAGE_OPTIONS.map((l) => [l.code, l.label]),
+);
+
+function getLanguageName(code: string): string {
+  return LANGUAGE_NAME_MAP.get(code) ?? code;
+}
 
 export interface ScriptGenerationInput {
   summary: NewsSummaryOutput;
@@ -22,6 +31,7 @@ export interface ScriptGenerationInput {
   tone: EpisodeTone;
   lengthMinutes: number;
   voices: VoiceConfig;
+  language?: string;
 }
 
 const STYLE_INSTRUCTIONS: Record<EpisodeStyle, string> = {
@@ -73,7 +83,11 @@ export function scriptGenerationSystemPrompt(
     .map((v) => `  - Role: "${v.role}" → voice_id: "${v.voice_id}" (${v.name})`)
     .join("\n");
 
-  return `You are a podcast script writer. Generate a complete podcast script based on the provided news summary.
+  const languageLine = input.language && input.language !== "en"
+    ? `\nLANGUAGE: Write the entire podcast script in ${getLanguageName(input.language)}. All dialogue, narration, and content must be in ${getLanguageName(input.language)}.`
+    : "";
+
+  return `You are a podcast script writer. Generate a complete podcast script based on the provided news summary.${languageLine}
 
 ${STYLE_INSTRUCTIONS[input.style]}
 

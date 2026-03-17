@@ -21,6 +21,7 @@ export interface ScriptStepParams {
   tone: EpisodeTone;
   lengthMinutes: number;
   voiceConfig: VoiceConfig;
+  language?: string;
 }
 
 export interface ScriptStepResult {
@@ -37,7 +38,7 @@ export interface ScriptStepResult {
 export async function scriptStep(
   params: ScriptStepParams
 ): Promise<ScriptStepResult> {
-  const { summary, style, tone, lengthMinutes, voiceConfig } = params;
+  const { summary, style, tone, lengthMinutes, voiceConfig, language } = params;
 
   const input: ScriptGenerationInput = {
     summary,
@@ -45,6 +46,7 @@ export async function scriptStep(
     tone,
     lengthMinutes,
     voices: voiceConfig,
+    language,
   };
 
   // Use higher max tokens for longer episodes — ~150 words/minute,

@@ -7,7 +7,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import type { EpisodeStyle, EpisodeTone, VoiceConfig } from "@/types/episode";
+import type { EpisodeStyle, EpisodeTone, VoiceConfig, EpisodeLanguage } from "@/types/episode";
+import { LANGUAGE_OPTIONS } from "@/types/episode";
 import type { Json } from "@/types/database.types";
 
 // ---------------------------------------------------------------------------
@@ -22,6 +23,8 @@ const VALID_TONES: EpisodeTone[] = [
   "business_news",
 ];
 
+const VALID_LANGUAGES = new Set(LANGUAGE_OPTIONS.map((l) => l.code));
+
 interface CreateEpisodeBody {
   topicQuery?: string;
   style: EpisodeStyle;
@@ -30,6 +33,7 @@ interface CreateEpisodeBody {
   voiceConfig: VoiceConfig;
   sourceType?: "topic" | "feed_summary";
   feedIds?: string[];
+  language?: EpisodeLanguage;
 }
 
 function isValidCreateBody(body: unknown): body is CreateEpisodeBody {
@@ -44,7 +48,7 @@ function isValidCreateBody(body: unknown): body is CreateEpisodeBody {
   if (!VALID_TONES.includes(obj.tone as EpisodeTone)) return false;
 
   if (obj.lengthMinutes !== undefined) {
-    if (typeof obj.lengthMinutes !== "number" || obj.lengthMinutes < 1 || obj.lengthMinutes > 30) {
+    if (typeof obj.lengthMinutes !== "number" || obj.lengthMinutes < 1 || obj.lengthMinutes > 5) {
       return false;
     }
   }
@@ -63,6 +67,11 @@ function isValidCreateBody(body: unknown): body is CreateEpisodeBody {
   if (obj.sourceType === "feed_summary") {
     if (!Array.isArray(obj.feedIds) || obj.feedIds.length === 0 || obj.feedIds.length > 50) return false;
     if (!obj.feedIds.every((id: unknown) => typeof id === "string" && id.trim().length > 0)) return false;
+  }
+
+  // language validation
+  if (obj.language !== undefined) {
+    if (typeof obj.language !== "string" || !VALID_LANGUAGES.has(obj.language as EpisodeLanguage)) return false;
   }
 
   return true;
@@ -146,13 +155,40 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Invalid body. Required: topicQuery (string), style (monologue|interview|group_chat), tone (serious|lighthearted|dark_mystery|business_news), voiceConfig ({ voices: [{ role, voice_id, name }] }). Optional: lengthMinutes (1-30).",
+          "Invalid body. Required: topicQuery (string), style (monologue|interview|group_chat), tone (serious|lighthearted|dark_mystery|business_news), voiceConfig ({ voices: [{ role, voice_id, name }] }). Optional: lengthMinutes (1-5), language.",
       },
       { status: 400 }
     );
   }
 
-  const { style, tone, lengthMinutes = 5, voiceConfig, sourceType = "topic" } = body;
+  // Rate limit: 2 episodes per day (unless admin)
+  const ADMIN_EMAIL = "krlehnardt@gmail.com";
+  const isAdmin = user.email === ADMIN_EMAIL;
+
+  if (!isAdmin) {
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+
+    const { count, error: countError } = await supabase
+      .from("episodes")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .gte("created_at", todayStart.toISOString());
+
+    if (countError) {
+      console.error("[episodes] Rate limit check error:", countError);
+      return NextResponse.json({ error: "Failed to check rate limit" }, { status: 500 });
+    }
+
+    if ((count ?? 0) >= 2) {
+      return NextResponse.json(
+        { error: "Daily limit reached. You can create up to 2 episodes per day." },
+        { status: 429 },
+      );
+    }
+  }
+
+  const { style, tone, lengthMinutes = 5, voiceConfig, sourceType = "topic", language = "en" } = body;
   const feedIds = body.feedIds ? [...new Set(body.feedIds)] : undefined;
   // Auto-generate topicQuery for feed_summary episodes when not provided
   const topicQuery = body.topicQuery?.trim() || (sourceType === "feed_summary" ? "Feed summary" : "");
@@ -185,6 +221,7 @@ export async function POST(request: NextRequest) {
       length_minutes: lengthMinutes,
       voice_config: voiceConfig as unknown as Json,
       source_type: sourceType,
+      language,
       ...(sourceType === "feed_summary" && feedIds
         ? { sources: feedIds.map((id) => ({ feedId: id })) as unknown as Json }
         : {}),
