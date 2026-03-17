@@ -188,7 +188,8 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const { style, tone, lengthMinutes = 5, voiceConfig, sourceType = "topic", feedIds, language = "en" } = body;
+  const { style, tone, lengthMinutes = 5, voiceConfig, sourceType = "topic", language = "en" } = body;
+  const feedIds = body.feedIds ? [...new Set(body.feedIds)] : undefined;
   // Auto-generate topicQuery for feed_summary episodes when not provided
   const topicQuery = body.topicQuery?.trim() || (sourceType === "feed_summary" ? "Feed summary" : "");
 
