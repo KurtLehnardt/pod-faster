@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
 
   if (!isAdmin) {
     const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    todayStart.setUTCHours(0, 0, 0, 0);
 
     const { count, error: countError } = await supabase
       .from("episodes")

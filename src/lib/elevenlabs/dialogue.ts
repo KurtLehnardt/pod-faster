@@ -63,7 +63,9 @@ export async function textToDialogue(
   }
 
   // --- Fallback: sequential TTS + concatenation ---
-  return fallbackConcatenation(segments, totalChars, modelId);
+  // Pass raw caller-provided modelId (not the destructured default "eleven_v3")
+  // so English fallback uses the TTS default (eleven_turbo_v2_5) instead.
+  return fallbackConcatenation(segments, totalChars, params.modelId);
 }
 
 /**
