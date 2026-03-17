@@ -58,7 +58,8 @@ export async function checkFeatureAccess(
     return { allowed: false, requiredTier, currentTier: "free" };
   }
 
-  const currentTier = data.subscription_tier ?? "free";
+  const rawTier = data.subscription_tier ?? "free";
+  const currentTier: SubscriptionTier = rawTier in TIER_HIERARCHY ? rawTier : "free";
   const allowed =
     TIER_HIERARCHY[currentTier] >= TIER_HIERARCHY[requiredTier];
 

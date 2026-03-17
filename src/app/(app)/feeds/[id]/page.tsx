@@ -89,8 +89,11 @@ export default function FeedDetailPage({
     try {
       await updateFeed(id, { auto_transcribe: checked });
       refresh();
-    } catch {
+    } catch (err) {
       setAutoTranscribeOverride(null);
+      if (err instanceof Error && err.message.includes("premium")) {
+        alert("Auto-transcribe requires a premium subscription.");
+      }
     }
   }
 
