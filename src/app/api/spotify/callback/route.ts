@@ -17,7 +17,9 @@ import { storeTokens } from "@/lib/spotify/tokens";
 import { syncSubscriptions } from "@/lib/spotify/sync";
 
 export async function GET(request: NextRequest) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+  const proto = request.headers.get("x-forwarded-proto") ?? "http";
+  const host = request.headers.get("host") ?? request.nextUrl.host;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || `${proto}://${host}`;
 
   // 1. Auth check
   const supabase = await createClient();
@@ -76,13 +78,19 @@ export async function GET(request: NextRequest) {
     oauthState.redirectUri ||
     `${request.nextUrl.origin}/api/spotify/callback`;
 
+  console.log("[spotify/callback] redirectUri for token exchange:", redirectUri);
+
   try {
     const tokens = await exchangeCodeForTokens(code, oauthState.codeVerifier, redirectUri);
+    console.log("[spotify/callback] Token exchange succeeded");
     const profile = await fetchUserProfile(tokens.access_token);
+    console.log("[spotify/callback] Profile fetched:", profile.display_name);
     await storeTokens(user.id, tokens, profile);
+    console.log("[spotify/callback] Tokens stored");
 
     // 5. Initial sync (must await on serverless — execution may terminate otherwise)
     await syncSubscriptions(user.id);
+    console.log("[spotify/callback] Initial sync complete");
 
     // 6. Redirect to settings, clear cookie
     const response = NextResponse.redirect(
@@ -94,10 +102,9 @@ export async function GET(request: NextRequest) {
     });
     return response;
   } catch (err) {
-    console.error(
-      "Spotify OAuth callback failed:",
-      err instanceof Error ? err.message : "Unknown error"
-    );
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    const detail = (err as { detail?: unknown })?.detail;
+    console.error("[spotify/callback] Failed:", msg, detail ? JSON.stringify(detail) : "");
     return NextResponse.redirect(
       `${appUrl}/settings?spotify=error&reason=exchange_failed`
     );

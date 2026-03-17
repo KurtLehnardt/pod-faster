@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
     code_challenge_method: "S256",
     code_challenge: codeChallenge,
     state,
+    show_dialog: "true",
   });
   const url = `https://accounts.spotify.com/authorize?${params}`;
 
