@@ -15,11 +15,10 @@ import {
 } from "@/lib/spotify/client";
 import { storeTokens } from "@/lib/spotify/tokens";
 import { syncSubscriptions } from "@/lib/spotify/sync";
+import { deriveAppUrl } from "@/lib/utils/derive-app-url";
 
 export async function GET(request: NextRequest) {
-  const proto = request.headers.get("x-forwarded-proto") ?? "http";
-  const host = request.headers.get("host") ?? request.nextUrl.host;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || `${proto}://${host}`;
+  const appUrl = deriveAppUrl(request.headers, request.nextUrl.origin);
 
   // 1. Auth check
   const supabase = await createClient();
