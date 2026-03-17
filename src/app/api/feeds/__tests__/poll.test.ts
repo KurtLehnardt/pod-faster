@@ -125,6 +125,21 @@ function mockBatchEpisodeUpsert(count = 1, error: unknown = null) {
 }
 
 /**
+ * Helper: set up mockFrom entries for duration backfill.
+ * Each episode with a non-null durationSeconds triggers one
+ * .update().eq().eq().is() call on feed_episodes.
+ */
+function mockDurationBackfill(count: number) {
+  for (let i = 0; i < count; i++) {
+    mockFrom.mockImplementationOnce(() => {
+      const chain = createChain();
+      chain.is.mockResolvedValue({ error: null });
+      return chain;
+    });
+  }
+}
+
+/**
  * Helper: set up a mockFrom for .update(payload).eq(id) -- single .eq() terminal.
  * Returns the captured update payload via a ref callback.
  */
@@ -190,6 +205,7 @@ describe("POST /api/feeds/poll", () => {
         imageUrl: null,
       },
       newEpisodes: [newEpisode],
+      allEpisodes: [newEpisode],
       totalEpisodes: 5,
     });
 
@@ -201,6 +217,9 @@ describe("POST /api/feeds/poll", () => {
 
     // 3. Batch upsert new episodes
     mockBatchEpisodeUpsert(1);
+
+    // 3b. Duration backfill (1 episode with durationSeconds)
+    mockDurationBackfill(1);
 
     // 4. Update feed metadata -> .update().eq()
     mockFeedUpdate();
@@ -227,6 +246,7 @@ describe("POST /api/feeds/poll", () => {
     mockPollFeed.mockResolvedValue({
       feed: { title: "Podcast", description: null, imageUrl: null },
       newEpisodes: [],
+      allEpisodes: [],
       totalEpisodes: 3,
     });
 
@@ -322,6 +342,7 @@ describe("POST /api/feeds/poll", () => {
     mockPollFeed.mockResolvedValue({
       feed: { title: "Test Podcast", description: null, imageUrl: null },
       newEpisodes: [newEpisode],
+      allEpisodes: [newEpisode],
       totalEpisodes: 5,
     });
 
@@ -339,6 +360,9 @@ describe("POST /api/feeds/poll", () => {
 
     // 3. Batch upsert episode
     mockBatchEpisodeUpsert(1);
+
+    // 3b. Duration backfill (1 episode with durationSeconds)
+    mockDurationBackfill(1);
 
     // 4. Update feed metadata
     mockFeedUpdate();
@@ -380,6 +404,7 @@ describe("POST /api/feeds/poll", () => {
         imageUrl: "https://example.com/new-img.jpg",
       },
       newEpisodes: [newEpisode],
+      allEpisodes: [newEpisode],
       totalEpisodes: 10,
     });
 
@@ -391,6 +416,9 @@ describe("POST /api/feeds/poll", () => {
 
     // 3. Batch upsert episode
     mockBatchEpisodeUpsert(1);
+
+    // 3b. Duration backfill (1 episode with durationSeconds)
+    mockDurationBackfill(1);
 
     // 4. Update feed metadata -- capture the payload
     let updatePayload: Record<string, unknown> | undefined;
