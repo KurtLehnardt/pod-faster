@@ -14,6 +14,16 @@ import type { PodcastFeed } from "@/types/feed";
 import type { Database } from "@/types/database.types";
 
 // ---------------------------------------------------------------------------
+// Route config
+// ---------------------------------------------------------------------------
+
+// The poll route uses after() to run background transcription work.
+// Vercel's default maxDuration (10s on Hobby, 60s on Pro) is too short for
+// STT jobs. Set to 300s so the serverless function stays alive long enough
+// for after() callbacks to complete.
+export const maxDuration = 300;
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
