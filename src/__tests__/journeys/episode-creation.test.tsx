@@ -385,11 +385,12 @@ describe("Episode Creation Flow", () => {
         expect(
           screen.getByText("Episode generated successfully!")
         ).toBeDefined();
-        expect(screen.getByText("Done")).toBeDefined();
+        expect(screen.getByText("View Episode")).toBeDefined();
+        expect(screen.getByText("Create Another")).toBeDefined();
       });
     });
 
-    it("calls onClose when Done button is clicked", async () => {
+    it("calls onClose when Create Another button is clicked", async () => {
       const onClose = vi.fn();
       mockFetch.mockResolvedValue({
         ok: true,
@@ -410,11 +411,11 @@ describe("Episode Creation Flow", () => {
       render(<GenerationProgress episodeId="ep-1" onClose={onClose} />);
 
       await waitFor(() => {
-        expect(screen.getByText("Done")).toBeDefined();
+        expect(screen.getByText("Create Another")).toBeDefined();
       });
 
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-      await user.click(screen.getByText("Done"));
+      await user.click(screen.getByText("Create Another"));
 
       expect(onClose).toHaveBeenCalled();
     });
