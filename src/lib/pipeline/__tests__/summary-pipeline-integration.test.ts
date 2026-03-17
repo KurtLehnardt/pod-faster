@@ -573,7 +573,7 @@ describe("windowTranscripts — edge cases", () => {
     expect(result).toHaveLength(10);
   });
 
-  it("sorts by most recent first before windowing", () => {
+  it("round-robin includes episodes from both feeds regardless of date", () => {
     const episodes = [
       {
         episodeId: "old",
@@ -594,11 +594,14 @@ describe("windowTranscripts — edge cases", () => {
     ];
 
     const result = windowTranscripts(episodes);
-    expect(result[0].episodeId).toBe("new");
-    expect(result[1].episodeId).toBe("old");
+    // Both feeds represented, round-robin order (f1 first since it appears first)
+    expect(result).toHaveLength(2);
+    const ids = result.map((r) => r.episodeId);
+    expect(ids).toContain("old");
+    expect(ids).toContain("new");
   });
 
-  it("handles episodes with null publishedAt", () => {
+  it("handles episodes with null publishedAt across feeds", () => {
     const episodes = [
       {
         episodeId: "no-date",
@@ -620,7 +623,36 @@ describe("windowTranscripts — edge cases", () => {
 
     const result = windowTranscripts(episodes);
     expect(result).toHaveLength(2);
-    // Episode with date should come first (more recent)
+    // Both episodes included; round-robin from different feeds
+    const ids = result.map((r) => r.episodeId);
+    expect(ids).toContain("no-date");
+    expect(ids).toContain("has-date");
+  });
+
+  it("null publishedAt within same feed sorts after dated episodes", () => {
+    const episodes = [
+      {
+        episodeId: "no-date",
+        feedId: "f1",
+        podcastTitle: "P1",
+        episodeTitle: "No Date",
+        transcript: "content without date",
+        publishedAt: null,
+      },
+      {
+        episodeId: "has-date",
+        feedId: "f1",
+        podcastTitle: "P1",
+        episodeTitle: "Has Date",
+        transcript: "content with date",
+        publishedAt: "2026-03-15T00:00:00Z",
+      },
+    ];
+
+    const result = windowTranscripts(episodes);
+    expect(result).toHaveLength(2);
+    // Within same feed, newest-first: dated episode comes before null-date
     expect(result[0].episodeId).toBe("has-date");
+    expect(result[1].episodeId).toBe("no-date");
   });
 });

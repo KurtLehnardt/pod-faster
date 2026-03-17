@@ -539,7 +539,7 @@ describe("windowTranscripts", () => {
     expect(result).toHaveLength(2);
   });
 
-  it("prioritizes most recent episodes when trimming", () => {
+  it("interleaves episodes from different feeds in round-robin order", () => {
     const longText = "x".repeat(300_000);
     const episodes = [
       {
@@ -561,8 +561,13 @@ describe("windowTranscripts", () => {
     ];
 
     const result = windowTranscripts(episodes);
-    // The newer episode should be first, old one should still fit
-    expect(result[0].episodeId).toBe("new");
+    // Round-robin: one from f1 then one from f2.
+    // f1's episode (300K chars) fits, but adding f2's would still be under 400K.
+    // Both should be included.
+    const ids = result.map((r) => r.episodeId);
+    expect(ids).toContain("old");
+    expect(ids).toContain("new");
+    expect(result).toHaveLength(2);
   });
 
   it("includes at least one episode even if it exceeds the limit", () => {
@@ -584,39 +589,135 @@ describe("windowTranscripts", () => {
     expect(result[0].transcript.length).toBe(400_000);
   });
 
-  it("drops oldest episodes when total exceeds limit", () => {
+  it("stops adding episodes when budget is exhausted during round-robin", () => {
     const mediumText = "x".repeat(250_000);
     const episodes = [
       {
-        episodeId: "oldest",
+        episodeId: "a1",
         feedId: "f1",
         podcastTitle: "P1",
-        episodeTitle: "Oldest",
+        episodeTitle: "Feed1 Episode",
         transcript: mediumText,
         publishedAt: "2026-03-01T00:00:00Z",
       },
       {
-        episodeId: "middle",
+        episodeId: "b1",
         feedId: "f2",
         podcastTitle: "P2",
-        episodeTitle: "Middle",
+        episodeTitle: "Feed2 Episode",
         transcript: mediumText,
         publishedAt: "2026-03-05T00:00:00Z",
       },
       {
-        episodeId: "newest",
+        episodeId: "c1",
         feedId: "f3",
         podcastTitle: "P3",
-        episodeTitle: "Newest",
+        episodeTitle: "Feed3 Episode",
         transcript: "Short recent",
         publishedAt: "2026-03-10T00:00:00Z",
       },
     ];
 
     const result = windowTranscripts(episodes);
-    // newest + middle should fit, oldest should be dropped
+    // Round-robin: f1 (250K) fits. f2 (250K) would exceed 400K → stop.
+    // Only f1's episode is included.
+    expect(result).toHaveLength(1);
+    expect(result[0].episodeId).toBe("a1");
+  });
+
+  it("multi-feed round-robin: 3 feeds, 2 episodes each — all feeds represented", () => {
+    const episodes = [
+      { episodeId: "a1", feedId: "fA", podcastTitle: "PA", episodeTitle: "A1", transcript: "content-a1", publishedAt: "2026-03-10T00:00:00Z" },
+      { episodeId: "a2", feedId: "fA", podcastTitle: "PA", episodeTitle: "A2", transcript: "content-a2", publishedAt: "2026-03-09T00:00:00Z" },
+      { episodeId: "b1", feedId: "fB", podcastTitle: "PB", episodeTitle: "B1", transcript: "content-b1", publishedAt: "2026-03-08T00:00:00Z" },
+      { episodeId: "b2", feedId: "fB", podcastTitle: "PB", episodeTitle: "B2", transcript: "content-b2", publishedAt: "2026-03-07T00:00:00Z" },
+      { episodeId: "c1", feedId: "fC", podcastTitle: "PC", episodeTitle: "C1", transcript: "content-c1", publishedAt: "2026-03-06T00:00:00Z" },
+      { episodeId: "c2", feedId: "fC", podcastTitle: "PC", episodeTitle: "C2", transcript: "content-c2", publishedAt: "2026-03-05T00:00:00Z" },
+    ];
+
+    const result = windowTranscripts(episodes);
+    expect(result).toHaveLength(6);
+
+    // All three feeds should be represented
+    const feedIds = new Set(result.map((r) => r.feedId));
+    expect(feedIds.size).toBe(3);
+    expect(feedIds).toContain("fA");
+    expect(feedIds).toContain("fB");
+    expect(feedIds).toContain("fC");
+
+    // Round-robin order: newest from each feed per round
+    // Round 1: a1, b1, c1  Round 2: a2, b2, c2
+    expect(result[0].episodeId).toBe("a1");
+    expect(result[1].episodeId).toBe("b1");
+    expect(result[2].episodeId).toBe("c1");
+    expect(result[3].episodeId).toBe("a2");
+    expect(result[4].episodeId).toBe("b2");
+    expect(result[5].episodeId).toBe("c2");
+  });
+
+  it("budget starvation prevention: small feed included despite large competitors", () => {
+    const largeText = "x".repeat(200_000);
+    const smallText = "y".repeat(10_000);
+    const episodes = [
+      { episodeId: "a1", feedId: "fA", podcastTitle: "PA", episodeTitle: "A1", transcript: largeText, publishedAt: "2026-03-10T00:00:00Z" },
+      { episodeId: "a2", feedId: "fA", podcastTitle: "PA", episodeTitle: "A2", transcript: largeText, publishedAt: "2026-03-09T00:00:00Z" },
+      { episodeId: "a3", feedId: "fA", podcastTitle: "PA", episodeTitle: "A3", transcript: largeText, publishedAt: "2026-03-08T00:00:00Z" },
+      { episodeId: "b1", feedId: "fB", podcastTitle: "PB", episodeTitle: "B1", transcript: smallText, publishedAt: "2026-03-07T00:00:00Z" },
+    ];
+
+    const result = windowTranscripts(episodes);
     const ids = result.map((r) => r.episodeId);
-    expect(ids).toContain("newest");
-    expect(ids).not.toContain("oldest");
+
+    // Round-robin: a1 (200K), b1 (10K) = 210K. Round 2: a2 (200K) = 410K > 400K → stop.
+    // Feed B's episode MUST be included.
+    expect(ids).toContain("b1");
+    expect(result).toHaveLength(2);
+  });
+
+  it("single feed fallback: all episodes from one feed → newest-first ordering", () => {
+    const episodes = [
+      { episodeId: "e1", feedId: "f1", podcastTitle: "P1", episodeTitle: "E1", transcript: "content-1", publishedAt: "2026-03-01T00:00:00Z" },
+      { episodeId: "e2", feedId: "f1", podcastTitle: "P1", episodeTitle: "E2", transcript: "content-2", publishedAt: "2026-03-05T00:00:00Z" },
+      { episodeId: "e3", feedId: "f1", podcastTitle: "P1", episodeTitle: "E3", transcript: "content-3", publishedAt: "2026-03-10T00:00:00Z" },
+    ];
+
+    const result = windowTranscripts(episodes);
+    expect(result).toHaveLength(3);
+    // Within a single feed, order is newest-first
+    expect(result[0].episodeId).toBe("e3");
+    expect(result[1].episodeId).toBe("e2");
+    expect(result[2].episodeId).toBe("e1");
+  });
+
+  it("uneven feed sizes: Feed A has 10 episodes, Feed B has 1 — B is included", () => {
+    const episodes = Array.from({ length: 10 }, (_, i) => ({
+      episodeId: `a${i}`,
+      feedId: "fA",
+      podcastTitle: "PA",
+      episodeTitle: `A${i}`,
+      transcript: `content-a${i}`,
+      publishedAt: `2026-03-${String(10 - i).padStart(2, "0")}T00:00:00Z`,
+    }));
+    episodes.push({
+      episodeId: "b0",
+      feedId: "fB",
+      podcastTitle: "PB",
+      episodeTitle: "B0",
+      transcript: "content-b0",
+      publishedAt: "2026-03-01T00:00:00Z",
+    });
+
+    const result = windowTranscripts(episodes);
+    const ids = result.map((r) => r.episodeId);
+
+    // Feed B's single episode must be included
+    expect(ids).toContain("b0");
+    // All 11 episodes should fit (all very short)
+    expect(result).toHaveLength(11);
+  });
+
+  it("empty input returns empty", () => {
+    const result = windowTranscripts([]);
+    expect(result).toHaveLength(0);
   });
 });
