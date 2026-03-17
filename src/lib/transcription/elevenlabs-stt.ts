@@ -40,7 +40,7 @@ interface SttResponse {
 // ── Constants ───────────────────────────────────────────────
 
 const STT_PATH = "/speech-to-text";
-const STT_MODEL = "eleven_flash_v2_5";
+const STT_MODEL = "scribe_v2";
 
 // ── Cost calculation ────────────────────────────────────────
 
@@ -72,13 +72,13 @@ function extractDuration(data: SttResponse): number {
 // ── URL-based transcription ─────────────────────────────────
 
 async function transcribeViaUrl(audioUrl: string): Promise<SttResult> {
+  const formData = new FormData();
+  formData.append("model_id", STT_MODEL);
+  formData.append("cloud_storage_url", audioUrl);
+
   const response = await elevenLabsFetch(STT_PATH, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      audio_url: audioUrl,
-      model_id: STT_MODEL,
-    }),
+    body: formData,
   });
 
   const data = (await response.json()) as SttResponse;

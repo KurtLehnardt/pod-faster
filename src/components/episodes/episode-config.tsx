@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { Mic, Users, MessageSquare, Loader2, Rss, Check, Tag, X } from "lucide-react";
+import { Mic, Users, MessageSquare, Loader2, Rss, Check, Tag, X, Plus, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -96,6 +96,9 @@ export function EpisodeConfig({
   const [style, setStyle] = useState<EpisodeStyle>("monologue");
   const [tone, setTone] = useState<EpisodeTone>("serious");
   const [language, setLanguage] = useState<EpisodeLanguage>("en");
+  const [addedLanguages, setAddedLanguages] = useState<Set<EpisodeLanguage>>(new Set(["en"]));
+  const [showLanguagePicker, setShowLanguagePicker] = useState(false);
+  const [languagesExpanded, setLanguagesExpanded] = useState(false);
   const [voiceAssignments, setVoiceAssignments] = useState<VoiceAssignment[]>(
     []
   );
@@ -324,6 +327,9 @@ export function EpisodeConfig({
     setStyle("monologue");
     setTone("serious");
     setLanguage("en");
+    setAddedLanguages(new Set(["en"]));
+    setShowLanguagePicker(false);
+    setLanguagesExpanded(false);
     setVoiceAssignments([]);
   }, [initialTopic]);
 
@@ -572,22 +578,87 @@ export function EpisodeConfig({
         {/* Language selector */}
         <div className="space-y-2">
           <Label>Language</Label>
-          <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto">
-            {LANGUAGE_OPTIONS.map(({ code, label }) => (
-              <button
-                key={code}
-                type="button"
-                onClick={() => setLanguage(code)}
-                className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                  language === code
-                    ? "border-primary bg-primary/5 text-primary font-medium"
-                    : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          {(() => {
+            const visibleLanguages = LANGUAGE_OPTIONS.filter((l) => addedLanguages.has(l.code));
+            const showCollapse = visibleLanguages.length > 4;
+            const displayed = showCollapse && !languagesExpanded
+              ? visibleLanguages.slice(0, 4)
+              : visibleLanguages;
+
+            return (
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  {displayed.map(({ code, label }) => (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={() => setLanguage(code)}
+                      className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                        language === code
+                          ? "border-primary bg-primary/5 text-primary font-medium"
+                          : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  {showCollapse && (
+                    <button
+                      type="button"
+                      onClick={() => setLanguagesExpanded(!languagesExpanded)}
+                      className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    >
+                      {languagesExpanded ? (
+                        <><ChevronUp className="size-3" />Less</>
+                      ) : (
+                        <><ChevronDown className="size-3" />{visibleLanguages.length - 4} more</>
+                      )}
+                    </button>
+                  )}
+                  {!showLanguagePicker && (
+                    <button
+                      type="button"
+                      onClick={() => setShowLanguagePicker(true)}
+                      className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    >
+                      <Plus className="size-3" />
+                      Add Language
+                    </button>
+                  )}
+                </div>
+                {showLanguagePicker && (
+                  <div className="rounded-lg border border-border bg-muted/50 p-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      {LANGUAGE_OPTIONS.filter((l) => !addedLanguages.has(l.code)).map(({ code, label }) => (
+                        <button
+                          key={code}
+                          type="button"
+                          onClick={() => {
+                            setAddedLanguages((prev) => new Set([...prev, code]));
+                            setLanguage(code);
+                            setShowLanguagePicker(false);
+                          }}
+                          className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {LANGUAGE_OPTIONS.filter((l) => !addedLanguages.has(l.code)).length === 0 && (
+                      <p className="text-xs text-muted-foreground text-center py-1">All languages added</p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowLanguagePicker(false)}
+                      className="mt-1.5 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Style selector */}
