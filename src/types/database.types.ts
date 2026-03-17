@@ -25,6 +25,8 @@ export type EpisodeStatus =
 
 export type EpisodeSourceType = "topic" | "feed_summary";
 
+export type SubscriptionTier = "free" | "pro" | "premium";
+
 export type PodcastStyle = "monologue" | "interview" | "group_chat";
 
 export type PodcastTone =
@@ -71,6 +73,7 @@ export interface Database {
           default_style: PodcastStyle;
           default_tone: PodcastTone;
           default_voice_id: string | null;
+          subscription_tier: string;
           created_at: string;
           updated_at: string;
         };
@@ -82,6 +85,7 @@ export interface Database {
           default_style?: PodcastStyle;
           default_tone?: PodcastTone;
           default_voice_id?: string | null;
+          subscription_tier?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -93,6 +97,7 @@ export interface Database {
           default_style?: PodcastStyle;
           default_tone?: PodcastTone;
           default_voice_id?: string | null;
+          subscription_tier?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -424,6 +429,7 @@ export interface Database {
           poll_error_count: number;
           source: FeedSource;
           spotify_show_id: string | null;
+          auto_transcribe: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -441,6 +447,7 @@ export interface Database {
           poll_error_count?: number;
           source?: FeedSource;
           spotify_show_id?: string | null;
+          auto_transcribe?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -458,6 +465,7 @@ export interface Database {
           poll_error_count?: number;
           source?: FeedSource;
           spotify_show_id?: string | null;
+          auto_transcribe?: boolean;
           created_at?: string;
           updated_at?: string;
         };
