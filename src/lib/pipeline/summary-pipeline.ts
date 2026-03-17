@@ -154,36 +154,98 @@ export function computeNextDueAt(cadence: Cadence, fromDate: Date): string {
 }
 
 /**
- * Window transcripts to fit within MAX_TRANSCRIPT_CHARS.
- * Prioritizes the most recent episodes. Trims oldest first.
+ * Window transcripts to fit within MAX_TRANSCRIPT_CHARS using round-robin
+ * feed balancing.
+ *
+ * Algorithm:
+ *   1. Group episodes by feedId.
+ *   2. Within each feed group, sort newest-first by publishedAt.
+ *   3. Interleave episodes in round-robin order (one from each feed per round).
+ *   4. Accumulate into the result until the MAX_TRANSCRIPT_CHARS budget is
+ *      exhausted.
+ *
+ * **Truncation guarantee (global, not per-feed):** If no episode has been
+ * selected yet and the next episode exceeds the budget, it is included with
+ * its transcript truncated to MAX_TRANSCRIPT_CHARS. Once at least one episode
+ * is in the result, any episode that would exceed the budget is skipped and
+ * accumulation stops.
  */
 export function windowTranscripts(
   episodes: GatheredEpisode[],
 ): GatheredEpisode[] {
-  // Sort by publishedAt descending (most recent first)
-  const sorted = [...episodes].sort((a, b) => {
-    const dateA = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
-    const dateB = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
-    return dateB - dateA;
-  });
+  if (episodes.length === 0) return [];
+
+  // 1. Group episodes by feedId
+  const feedGroups = new Map<string, GatheredEpisode[]>();
+  for (const ep of episodes) {
+    let group = feedGroups.get(ep.feedId);
+    if (!group) {
+      group = [];
+      feedGroups.set(ep.feedId, group);
+    }
+    group.push(ep);
+  }
+
+  // 2. Within each group, sort newest-first by publishedAt
+  for (const group of feedGroups.values()) {
+    group.sort((a, b) => {
+      const dateA = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+      const dateB = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+      return dateB - dateA;
+    });
+  }
+
+  // 3. Interleave in round-robin order
+  // Build an array of per-feed iterators (index cursors)
+  const feedIds = [...feedGroups.keys()];
+  const cursors = new Map<string, number>();
+  for (const fid of feedIds) {
+    cursors.set(fid, 0);
+  }
 
   const result: GatheredEpisode[] = [];
   let totalChars = 0;
+  let activeFeedCount = feedIds.length;
 
-  for (const ep of sorted) {
-    const epChars = ep.transcript.length;
-    if (totalChars + epChars > MAX_TRANSCRIPT_CHARS) {
-      // If we have nothing yet, include at least one (truncated)
-      if (result.length === 0) {
-        result.push({
-          ...ep,
-          transcript: ep.transcript.slice(0, MAX_TRANSCRIPT_CHARS),
-        });
+  while (activeFeedCount > 0) {
+    let addedThisRound = false;
+
+    for (const fid of feedIds) {
+      const group = feedGroups.get(fid)!;
+      const cursor = cursors.get(fid)!;
+
+      // Skip feeds that are exhausted
+      if (cursor >= group.length) continue;
+
+      const ep = group[cursor];
+      const epChars = ep.transcript.length;
+
+      if (totalChars + epChars > MAX_TRANSCRIPT_CHARS) {
+        // Global truncation guarantee: include at least one episode
+        if (result.length === 0) {
+          result.push({
+            ...ep,
+            transcript: ep.transcript.slice(0, MAX_TRANSCRIPT_CHARS),
+          });
+          // Budget is fully consumed — return immediately
+          return result;
+        }
+        // Budget exhausted with at least one episode already selected — stop
+        return result;
       }
-      break;
+
+      result.push(ep);
+      totalChars += epChars;
+      cursors.set(fid, cursor + 1);
+      addedThisRound = true;
     }
-    result.push(ep);
-    totalChars += epChars;
+
+    if (!addedThisRound) break;
+
+    // Recount active feeds for the next round
+    activeFeedCount = feedIds.filter(
+      (fid) => cursors.get(fid)! < feedGroups.get(fid)!.length,
+    ).length;
   }
 
   return result;
