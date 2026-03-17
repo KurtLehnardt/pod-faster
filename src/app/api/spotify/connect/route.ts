@@ -32,9 +32,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 3. Derive redirect URI from the request origin so it works on any
-  //    deployment (localhost, Vercel preview, production) without env vars.
-  const redirectUri = `${request.nextUrl.origin}/api/spotify/callback`;
+  // 3. Derive redirect URI from request headers (reliable behind Vercel proxy).
+  const proto = request.headers.get("x-forwarded-proto") ?? "http";
+  const host = request.headers.get("host") ?? request.nextUrl.host;
+  const redirectUri = `${proto}://${host}/api/spotify/callback`;
+  console.log("[spotify/connect] redirectUri:", redirectUri);
 
   // 4. Generate PKCE code_verifier (64 random bytes, base64url)
   const codeVerifier = crypto.randomBytes(64).toString("base64url");
