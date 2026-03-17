@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { FeedEpisodeList } from "@/components/feeds/feed-episode-list";
 import { useFeed, usePollFeed, useDeleteFeed, useUpdateFeed } from "@/lib/hooks/use-feeds";
 import { stripHtml } from "@/lib/utils/strip-html";
+import { toast } from "sonner";
 
 export default function FeedDetailPage({
   params,
@@ -92,7 +93,7 @@ export default function FeedDetailPage({
     } catch (err) {
       setAutoTranscribeOverride(null);
       if (err instanceof Error && err.message.includes("premium")) {
-        alert("Auto-transcribe requires a premium subscription.");
+        toast.error("Auto-transcribe requires a premium subscription.");
       }
     }
   }
