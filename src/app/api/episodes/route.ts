@@ -7,7 +7,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import type { EpisodeStyle, EpisodeTone, VoiceConfig } from "@/types/episode";
+import type { EpisodeStyle, EpisodeTone, VoiceConfig, EpisodeLanguage } from "@/types/episode";
+import { LANGUAGE_OPTIONS } from "@/types/episode";
 import type { Json } from "@/types/database.types";
 
 // ---------------------------------------------------------------------------
@@ -22,6 +23,8 @@ const VALID_TONES: EpisodeTone[] = [
   "business_news",
 ];
 
+const VALID_LANGUAGES = new Set(LANGUAGE_OPTIONS.map((l) => l.code));
+
 interface CreateEpisodeBody {
   topicQuery?: string;
   style: EpisodeStyle;
@@ -30,6 +33,7 @@ interface CreateEpisodeBody {
   voiceConfig: VoiceConfig;
   sourceType?: "topic" | "feed_summary";
   feedIds?: string[];
+  language?: EpisodeLanguage;
 }
 
 function isValidCreateBody(body: unknown): body is CreateEpisodeBody {
@@ -63,6 +67,11 @@ function isValidCreateBody(body: unknown): body is CreateEpisodeBody {
   if (obj.sourceType === "feed_summary") {
     if (!Array.isArray(obj.feedIds) || obj.feedIds.length === 0 || obj.feedIds.length > 50) return false;
     if (!obj.feedIds.every((id: unknown) => typeof id === "string" && id.trim().length > 0)) return false;
+  }
+
+  // language validation
+  if (obj.language !== undefined) {
+    if (typeof obj.language !== "string" || !VALID_LANGUAGES.has(obj.language as EpisodeLanguage)) return false;
   }
 
   return true;
@@ -152,7 +161,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { style, tone, lengthMinutes = 5, voiceConfig, sourceType = "topic", feedIds } = body;
+  const { style, tone, lengthMinutes = 5, voiceConfig, sourceType = "topic", feedIds, language = "en" } = body;
   // Auto-generate topicQuery for feed_summary episodes when not provided
   const topicQuery = body.topicQuery?.trim() || (sourceType === "feed_summary" ? "Feed summary" : "");
 
@@ -184,6 +193,7 @@ export async function POST(request: NextRequest) {
       length_minutes: lengthMinutes,
       voice_config: voiceConfig as unknown as Json,
       source_type: sourceType,
+      language,
       ...(sourceType === "feed_summary" && feedIds
         ? { sources: feedIds.map((id) => ({ feedId: id })) as unknown as Json }
         : {}),

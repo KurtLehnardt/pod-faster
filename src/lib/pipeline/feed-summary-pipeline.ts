@@ -41,6 +41,7 @@ export interface FeedSummaryPipelineParams {
   tone: EpisodeTone;
   lengthMinutes: number;
   voiceConfig: VoiceConfig;
+  language: string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -88,7 +89,7 @@ async function failEpisode(
 export async function runFeedSummaryPipeline(
   params: FeedSummaryPipelineParams,
 ): Promise<void> {
-  const { episodeId, userId, feedIds, style, tone, lengthMinutes, voiceConfig } =
+  const { episodeId, userId, feedIds, style, tone, lengthMinutes, voiceConfig, language } =
     params;
 
   // Create a single admin client for the entire pipeline run
@@ -184,6 +185,7 @@ export async function runFeedSummaryPipeline(
       tone,
       lengthMinutes,
       voiceConfig,
+      language,
     });
     totalTokens += scriptTokens;
     await updateEpisode(supabase, episodeId, {
@@ -197,6 +199,7 @@ export async function runFeedSummaryPipeline(
     const { audio, charactersUsed } = await audioStep({
       script,
       style,
+      language,
     });
     await updateEpisode(supabase, episodeId, {
       elevenlabs_characters_used: charactersUsed,

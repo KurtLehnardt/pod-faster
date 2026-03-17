@@ -2,17 +2,19 @@
  * Pipeline Step 4 — AUDIO
  *
  * Converts the podcast script into audio using ElevenLabs.
- * - Monologue: uses textToSpeech() with a single voice
+ * - Monologue: uses textToSpeech() with a single voice (one call for all segments)
  * - Interview / group_chat: uses textToDialogue() with multiple voices
  */
 
 import type { EpisodeStyle, EpisodeScript } from "@/types/episode";
+import type { TTSModelId } from "@/lib/elevenlabs/tts";
 import { textToSpeech } from "@/lib/elevenlabs/tts";
 import { textToDialogue } from "@/lib/elevenlabs/dialogue";
 
 export interface AudioStepParams {
   script: EpisodeScript;
   style: EpisodeStyle;
+  language?: string;
 }
 
 export interface AudioStepResult {
@@ -23,14 +25,16 @@ export interface AudioStepResult {
 /**
  * Generate audio from a podcast script.
  *
- * For monologue style, all segments are concatenated into a single TTS call
- * per segment with voice continuity. For multi-voice styles, the dialogue
- * API is used to produce natural speaker transitions.
+ * For monologue style, all segment texts are joined and sent as a single
+ * TTS call, producing one properly-encoded MP3 with correct seek support.
+ * For multi-voice styles, the dialogue API handles speaker transitions.
+ *
+ * Non-English languages use the multilingual TTS model.
  */
 export async function audioStep(
   params: AudioStepParams
 ): Promise<AudioStepResult> {
-  const { script, style } = params;
+  const { script, style, language } = params;
 
   if (script.segments.length === 0) {
     throw new Error("Cannot generate audio: script has no segments");
@@ -41,38 +45,30 @@ export async function audioStep(
     0
   );
 
+  const modelId: TTSModelId | undefined =
+    language && language !== "en" ? "eleven_multilingual_v2" : undefined;
+
   if (style === "monologue") {
-    return monologueAudio(script, totalChars);
+    return monologueAudio(script, totalChars, modelId);
   }
 
-  return dialogueAudio(script, totalChars);
+  return dialogueAudio(script, totalChars, modelId);
 }
 
 /**
- * Monologue: sequential TTS calls with voice continuity.
+ * Monologue: single TTS call with all segment texts joined.
+ * Produces one MP3 file with correct headers and seek table.
  */
 async function monologueAudio(
   script: EpisodeScript,
-  totalChars: number
+  totalChars: number,
+  modelId?: TTSModelId,
 ): Promise<AudioStepResult> {
-  const buffers: ArrayBuffer[] = [];
-  const previousRequestIds: string[] = [];
+  const fullText = script.segments.map((s) => s.text).join("\n\n");
+  const voiceId = script.segments[0].voice_id;
 
-  for (const segment of script.segments) {
-    const result = await textToSpeech({
-      text: segment.text,
-      voiceId: segment.voice_id,
-      previousRequestIds: previousRequestIds.slice(-3),
-    });
-
-    buffers.push(result.audio);
-    if (result.requestId) {
-      previousRequestIds.push(result.requestId);
-    }
-  }
-
-  const audio = concatArrayBuffers(buffers);
-  return { audio, charactersUsed: totalChars };
+  const result = await textToSpeech({ text: fullText, voiceId, modelId });
+  return { audio: result.audio, charactersUsed: totalChars };
 }
 
 /**
@@ -80,28 +76,18 @@ async function monologueAudio(
  */
 async function dialogueAudio(
   script: EpisodeScript,
-  totalChars: number
+  totalChars: number,
+  modelId?: TTSModelId,
 ): Promise<AudioStepResult> {
   const segments = script.segments.map((seg) => ({
     text: seg.text,
     voice_id: seg.voice_id,
   }));
 
-  const result = await textToDialogue({ segments });
+  const result = await textToDialogue({
+    segments,
+    ...(modelId ? { modelId } : {}),
+  });
 
   return { audio: result.audio, charactersUsed: totalChars };
-}
-
-/**
- * Concatenate multiple ArrayBuffers into one.
- */
-function concatArrayBuffers(buffers: ArrayBuffer[]): ArrayBuffer {
-  const totalLength = buffers.reduce((sum, b) => sum + b.byteLength, 0);
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const buf of buffers) {
-    result.set(new Uint8Array(buf), offset);
-    offset += buf.byteLength;
-  }
-  return result.buffer as ArrayBuffer;
 }
