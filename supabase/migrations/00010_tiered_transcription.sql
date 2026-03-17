@@ -47,3 +47,12 @@ AS $$
     AND is_partial_transcript = true
     AND created_at >= date_trunc('week', now());
 $$;
+
+-- ── Restrict RPC access to service_role only ──────────────
+-- Prevents any authenticated user from querying other users' cost data via PostgREST.
+
+REVOKE EXECUTE ON FUNCTION public.stt_monthly_cost(UUID) FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.stt_monthly_cost(UUID) TO service_role;
+
+REVOKE EXECUTE ON FUNCTION public.stt_weekly_count(UUID) FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.stt_weekly_count(UUID) TO service_role;

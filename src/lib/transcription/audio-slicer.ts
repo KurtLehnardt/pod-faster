@@ -104,6 +104,13 @@ export async function sliceAudio(
   }
 
   // Fallback: download full file, slice bytes in memory
+  const MAX_FALLBACK_BYTES = 50 * 1024 * 1024; // 50 MB
+  if (contentLength > MAX_FALLBACK_BYTES) {
+    throw new Error(
+      `Audio file too large for in-memory slicing (${Math.round(contentLength / 1024 / 1024)}MB). Range headers not supported by CDN.`,
+    );
+  }
+
   const fullResponse = await fetch(audioUrl);
   if (!fullResponse.ok) {
     throw new Error(`Failed to download audio: ${fullResponse.status} ${fullResponse.statusText}`);

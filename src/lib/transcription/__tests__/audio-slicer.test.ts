@@ -102,7 +102,7 @@ describe("sliceAudio", () => {
   });
 
   it("falls back to full download when Range not supported", async () => {
-    const fileSize = 3600 * 16000;
+    const fileSize = 1800 * 16000; // ~27MB, under 50MB guard
     const fullBlob = fakeAudioBlob(fileSize);
 
     // HEAD: no accept-ranges
@@ -110,12 +110,23 @@ describe("sliceAudio", () => {
     // Full download
     fetchSpy.mockResolvedValueOnce(fakeResponse(fullBlob));
 
-    const result = await sliceAudio("https://example.com/no-range.mp3", 3600);
+    const result = await sliceAudio("https://example.com/no-range.mp3", 1800);
 
     expect(result.startSeconds).toBe(300);
     expect(result.endSeconds).toBe(600);
     // Blob should be smaller than the full file
     expect(result.audioBlob.size).toBeLessThan(fileSize);
+  });
+
+  it("throws when fallback file exceeds 50MB size guard", async () => {
+    const fileSize = 60 * 1024 * 1024; // 60MB
+
+    // HEAD: no accept-ranges
+    fetchSpy.mockResolvedValueOnce(fakeHeadResponse(fileSize, null));
+
+    await expect(
+      sliceAudio("https://example.com/huge.mp3", 7200)
+    ).rejects.toThrow("Audio file too large for in-memory slicing");
   });
 
   it("throws when download fails", async () => {

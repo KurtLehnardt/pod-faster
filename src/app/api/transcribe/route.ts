@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
     if (!result.success) {
       console.error("[transcribe] Transcription failed:", result.error);
       return NextResponse.json(
-        { error: result.error ?? "Transcription failed" },
+        { error: "Transcription failed" },
         { status: 500 }
       );
     }
