@@ -100,14 +100,15 @@ function makeRequest(method: string, url: string, body?: unknown): Request {
  */
 function makeCallbackRequest(
   queryParams: Record<string, string>,
-  cookieValue?: string
+  cookieValue?: string,
+  extraHeaders?: Record<string, string>
 ): Request {
   const url = new URL("http://localhost/api/spotify/callback");
   for (const [key, value] of Object.entries(queryParams)) {
     url.searchParams.set(key, value);
   }
 
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...extraHeaders };
   if (cookieValue) {
     headers["cookie"] = `spotify_oauth=${cookieValue}`;
   }
@@ -308,6 +309,66 @@ describe("Spotify API Routes", () => {
         expect.objectContaining({ access_token: "sp-access-token" }),
         expect.objectContaining({ id: "spotify-user-1" })
       );
+    });
+
+    it("uses request headers for redirect URL instead of NEXT_PUBLIC_APP_URL", async () => {
+      // NEXT_PUBLIC_APP_URL is set to localhost (simulating a CI build artifact)
+      process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
+
+      mockAuthGetUser.mockResolvedValueOnce({
+        data: { user: { id: "user-123" } },
+      });
+
+      const theState = "header-priority-state";
+      const oauthCookie = JSON.stringify({
+        codeVerifier: "test-verifier",
+        state: theState,
+      });
+
+      mockExchangeCodeForTokens.mockResolvedValueOnce({
+        access_token: "sp-access-token",
+        token_type: "Bearer",
+        scope: "user-library-read",
+        expires_in: 3600,
+        refresh_token: "sp-refresh-token",
+      });
+
+      mockFetchUserProfile.mockResolvedValueOnce({
+        id: "spotify-user-1",
+        display_name: "Test User",
+        email: "test@example.com",
+        images: [],
+      });
+
+      mockStoreTokens.mockResolvedValueOnce(undefined);
+      mockSyncSubscriptions.mockResolvedValueOnce({
+        added: 5,
+        removed: 0,
+        unchanged: 0,
+        total: 5,
+      });
+
+      // Provide forwarded headers that differ from the env var
+      const req = makeCallbackRequest(
+        { code: "auth-code", state: theState },
+        oauthCookie,
+        {
+          "x-forwarded-proto": "https",
+          host: "pod-faster.vercel.app",
+        }
+      );
+
+      const { NextRequest } = await import("next/server");
+      const nextReq = new NextRequest(req);
+
+      const res = await GET(nextReq);
+      expect(res.status).toBe(307);
+
+      const location = res.headers.get("location");
+      // Should redirect to the header-derived URL, NOT localhost
+      expect(location).toContain("https://pod-faster.vercel.app");
+      expect(location).toContain("spotify=connected");
+      expect(location).not.toContain("localhost:3000");
     });
   });
 
