@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: clientId,
-    scope: "user-library-read",
+    scope: "user-read-private user-read-email user-library-read",
     redirect_uri: redirectUri,
     code_challenge_method: "S256",
     code_challenge: codeChallenge,
