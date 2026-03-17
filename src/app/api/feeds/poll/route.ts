@@ -227,18 +227,40 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Backfill duration_seconds for existing episodes that have null values
+      // Backfill duration_seconds for existing episodes that have null values.
+      // First query which episodes still need backfill (single SELECT),
+      // then only issue UPDATEs for those specific episodes.
+      // Capped at 50 per poll to bound request time; remainder caught on next poll.
       const episodesWithDuration = result.allEpisodes.filter(
         (ep) => ep.durationSeconds != null
       );
       if (episodesWithDuration.length > 0) {
-        for (const ep of episodesWithDuration) {
-          await supabase
-            .from("feed_episodes")
-            .update({ duration_seconds: ep.durationSeconds })
-            .eq("feed_id", feed.id)
-            .eq("guid", ep.guid)
-            .is("duration_seconds", null);
+        const { data: nullDurationEps } = await supabase
+          .from("feed_episodes")
+          .select("guid")
+          .eq("feed_id", feed.id)
+          .is("duration_seconds", null);
+
+        if (nullDurationEps && nullDurationEps.length > 0) {
+          const nullGuids = new Set(
+            (nullDurationEps as Array<{ guid: string }>).map((e) => e.guid)
+          );
+          const toBackfill = episodesWithDuration
+            .filter((ep) => nullGuids.has(ep.guid))
+            .slice(0, 50);
+          for (const ep of toBackfill) {
+            const { error: bfError } = await supabase
+              .from("feed_episodes")
+              .update({ duration_seconds: ep.durationSeconds })
+              .eq("feed_id", feed.id)
+              .eq("guid", ep.guid);
+            if (bfError) {
+              console.warn(
+                `[feeds/poll] Duration backfill failed for ${ep.guid}:`,
+                bfError.message,
+              );
+            }
+          }
         }
       }
 

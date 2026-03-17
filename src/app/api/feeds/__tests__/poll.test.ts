@@ -126,14 +126,32 @@ function mockBatchEpisodeUpsert(count = 1, error: unknown = null) {
 
 /**
  * Helper: set up mockFrom entries for duration backfill.
- * Each episode with a non-null durationSeconds triggers one
- * .update().eq().eq().is() call on feed_episodes.
+ *
+ * The route first issues a single SELECT to find episodes with
+ * duration_seconds IS NULL, then issues one UPDATE per episode
+ * that needs backfilling (intersection of parsed feed data and
+ * null-duration DB rows).
+ *
+ * @param nullGuids - GUIDs that have null duration in the DB
+ *   (controls how many UPDATEs follow). Pass empty array to
+ *   simulate "all durations already backfilled" (0 UPDATEs).
  */
-function mockDurationBackfill(count: number) {
-  for (let i = 0; i < count; i++) {
+function mockDurationBackfill(nullGuids: string[]) {
+  // 1. SELECT guids where duration_seconds IS NULL
+  mockFrom.mockImplementationOnce(() => {
+    const chain = createChain();
+    chain.is.mockResolvedValue({
+      data: nullGuids.map((g) => ({ guid: g })),
+      error: null,
+    });
+    return chain;
+  });
+
+  // 2. One UPDATE per episode that needs backfilling
+  for (let i = 0; i < nullGuids.length; i++) {
     mockFrom.mockImplementationOnce(() => {
       const chain = createChain();
-      chain.is.mockResolvedValue({ error: null });
+      chain.eq.mockReturnValueOnce(chain).mockResolvedValueOnce({ error: null });
       return chain;
     });
   }
@@ -218,8 +236,8 @@ describe("POST /api/feeds/poll", () => {
     // 3. Batch upsert new episodes
     mockBatchEpisodeUpsert(1);
 
-    // 3b. Duration backfill (1 episode with durationSeconds)
-    mockDurationBackfill(1);
+    // 3b. Duration backfill (1 episode with null duration in DB)
+    mockDurationBackfill(["ep-new-1"]);
 
     // 4. Update feed metadata -> .update().eq()
     mockFeedUpdate();
@@ -361,8 +379,8 @@ describe("POST /api/feeds/poll", () => {
     // 3. Batch upsert episode
     mockBatchEpisodeUpsert(1);
 
-    // 3b. Duration backfill (1 episode with durationSeconds)
-    mockDurationBackfill(1);
+    // 3b. Duration backfill (1 episode with null duration in DB)
+    mockDurationBackfill(["ep-tx-1"]);
 
     // 4. Update feed metadata
     mockFeedUpdate();
@@ -417,8 +435,8 @@ describe("POST /api/feeds/poll", () => {
     // 3. Batch upsert episode
     mockBatchEpisodeUpsert(1);
 
-    // 3b. Duration backfill (1 episode with durationSeconds)
-    mockDurationBackfill(1);
+    // 3b. Duration backfill (1 episode with null duration in DB)
+    mockDurationBackfill(["ep-meta-1"]);
 
     // 4. Update feed metadata -- capture the payload
     let updatePayload: Record<string, unknown> | undefined;
