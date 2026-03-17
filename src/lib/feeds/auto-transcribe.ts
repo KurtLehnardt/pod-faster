@@ -82,12 +82,25 @@ export async function autoTranscribeNewEpisodes(
         continue;
       }
 
-      await processTranscription({
+      const audioUrl = ep.audio_url;
+      if (!audioUrl) continue;
+
+      const result = await processTranscription({
         feedEpisodeId: ep.id,
         userId,
-        audioUrl: ep.audio_url!,
+        audioUrl,
         durationSeconds: ep.duration_seconds,
       });
+
+      if (!result.success) {
+        await supabase
+          .from("feed_episodes")
+          .update({
+            transcription_status: "failed",
+            transcription_error: result.error ?? "Transcription failed",
+          })
+          .eq("id", ep.id);
+      }
     } catch (err) {
       console.error(`[auto-transcribe] Episode ${ep.id} failed:`, err);
       // Mark as failed so it can be retried manually
