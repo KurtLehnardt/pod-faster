@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth/require-auth";
+import { checkFeatureAccess } from "@/lib/auth/feature-gate";
 import { updateFeedSchema } from "@/lib/validation/feed-schemas";
 import type { PodcastFeed, FeedEpisode } from "@/types/feed";
 
@@ -98,11 +99,33 @@ export async function PUT(
 
   // Check that at least one field is being updated
   const updateData = parsed.data;
-  if (updateData.is_active === undefined && updateData.title === undefined) {
+  if (
+    updateData.is_active === undefined &&
+    updateData.title === undefined &&
+    updateData.auto_transcribe === undefined
+  ) {
     return NextResponse.json(
-      { error: "No update fields provided. Allowed: is_active, title" },
+      { error: "No update fields provided. Allowed: is_active, title, auto_transcribe" },
       { status: 400 }
     );
+  }
+
+  // Feature gate: enabling auto_transcribe requires premium tier
+  if (updateData.auto_transcribe === true) {
+    const { allowed, requiredTier, currentTier } = await checkFeatureAccess(
+      user.id,
+      "auto_transcribe",
+    );
+    if (!allowed) {
+      return NextResponse.json(
+        {
+          error: "Auto-transcribe requires a premium subscription",
+          requiredTier,
+          currentTier,
+        },
+        { status: 403 },
+      );
+    }
   }
 
   // Verify ownership before update
@@ -126,6 +149,9 @@ export async function PUT(
   }
   if (updateData.title !== undefined) {
     payload.title = updateData.title;
+  }
+  if (updateData.auto_transcribe !== undefined) {
+    payload.auto_transcribe = updateData.auto_transcribe;
   }
 
   const { data: feed, error } = await supabase
