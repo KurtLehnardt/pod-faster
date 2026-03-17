@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth/require-auth";
 import { pollFeed } from "@/lib/rss/poller";
 import { extractTranscript } from "@/lib/rss/transcript";
+import { autoTranscribeNewEpisodes } from "@/lib/feeds/auto-transcribe";
 import type { PodcastFeed } from "@/types/feed";
 import type { Database } from "@/types/database.types";
 
@@ -196,6 +197,25 @@ export async function POST(request: NextRequest) {
           );
         } else {
           newEpisodeCount = upsertData?.length ?? 0;
+
+          // Auto-transcribe new episodes if the feed has it enabled.
+          // Runs inline (before response) — capped at 5 episodes per feed.
+          if (feed.auto_transcribe && upsertData && upsertData.length > 0) {
+            const newEpisodeIds = upsertData.map((ep) => ep.id);
+            try {
+              await autoTranscribeNewEpisodes(
+                feed.id,
+                feed.user_id,
+                newEpisodeIds,
+              );
+            } catch (atErr) {
+              // Auto-transcribe failure is non-fatal to the poll
+              console.error(
+                `[feeds/poll] Auto-transcribe error for feed ${feed.id}:`,
+                atErr,
+              );
+            }
+          }
         }
       }
 
