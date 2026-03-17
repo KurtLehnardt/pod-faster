@@ -48,7 +48,7 @@ function isValidCreateBody(body: unknown): body is CreateEpisodeBody {
   if (!VALID_TONES.includes(obj.tone as EpisodeTone)) return false;
 
   if (obj.lengthMinutes !== undefined) {
-    if (typeof obj.lengthMinutes !== "number" || obj.lengthMinutes < 1 || obj.lengthMinutes > 30) {
+    if (typeof obj.lengthMinutes !== "number" || obj.lengthMinutes < 1 || obj.lengthMinutes > 5) {
       return false;
     }
   }
@@ -155,10 +155,37 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Invalid body. Required: topicQuery (string), style (monologue|interview|group_chat), tone (serious|lighthearted|dark_mystery|business_news), voiceConfig ({ voices: [{ role, voice_id, name }] }). Optional: lengthMinutes (1-30).",
+          "Invalid body. Required: topicQuery (string), style (monologue|interview|group_chat), tone (serious|lighthearted|dark_mystery|business_news), voiceConfig ({ voices: [{ role, voice_id, name }] }). Optional: lengthMinutes (1-5), language.",
       },
       { status: 400 }
     );
+  }
+
+  // Rate limit: 2 episodes per day (unless admin)
+  const ADMIN_EMAIL = "krlehnardt@gmail.com";
+  const isAdmin = user.email === ADMIN_EMAIL;
+
+  if (!isAdmin) {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const { count, error: countError } = await supabase
+      .from("episodes")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .gte("created_at", todayStart.toISOString());
+
+    if (countError) {
+      console.error("[episodes] Rate limit check error:", countError);
+      return NextResponse.json({ error: "Failed to check rate limit" }, { status: 500 });
+    }
+
+    if ((count ?? 0) >= 2) {
+      return NextResponse.json(
+        { error: "Daily limit reached. You can create up to 2 episodes per day." },
+        { status: 429 },
+      );
+    }
   }
 
   const { style, tone, lengthMinutes = 5, voiceConfig, sourceType = "topic", feedIds, language = "en" } = body;

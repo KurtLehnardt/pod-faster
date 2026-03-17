@@ -562,10 +562,10 @@ export function EpisodeConfig({
                 setLengthMinutes(v);
               }}
               min={1}
-              max={30}
+              max={5}
               step={1}
             />
-            <span className="text-xs text-muted-foreground">30</span>
+            <span className="text-xs text-muted-foreground">5</span>
           </div>
         </div>
 

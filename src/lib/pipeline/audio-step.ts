@@ -56,8 +56,16 @@ export async function audioStep(
 }
 
 /**
+ * ElevenLabs per-request character limit. Chunks exceeding this are
+ * sent as separate TTS calls and concatenated.
+ */
+const TTS_CHAR_LIMIT = 5000;
+
+/**
  * Monologue: single TTS call with all segment texts joined.
  * Produces one MP3 file with correct headers and seek table.
+ * For long scripts exceeding the ElevenLabs character limit,
+ * text is chunked at paragraph boundaries.
  */
 async function monologueAudio(
   script: EpisodeScript,
@@ -67,8 +75,61 @@ async function monologueAudio(
   const fullText = script.segments.map((s) => s.text).join("\n\n");
   const voiceId = script.segments[0].voice_id;
 
-  const result = await textToSpeech({ text: fullText, voiceId, modelId });
-  return { audio: result.audio, charactersUsed: totalChars };
+  if (fullText.length <= TTS_CHAR_LIMIT) {
+    const result = await textToSpeech({ text: fullText, voiceId, modelId });
+    return { audio: result.audio, charactersUsed: totalChars };
+  }
+
+  // Chunk at paragraph boundaries to stay under the per-request limit
+  const chunks = chunkText(fullText, TTS_CHAR_LIMIT);
+  const buffers: ArrayBuffer[] = [];
+  const previousRequestIds: string[] = [];
+
+  for (const chunk of chunks) {
+    const result = await textToSpeech({
+      text: chunk,
+      voiceId,
+      modelId,
+      previousRequestIds: previousRequestIds.slice(-3),
+    });
+    buffers.push(result.audio);
+    if (result.requestId) {
+      previousRequestIds.push(result.requestId);
+    }
+  }
+
+  const totalLength = buffers.reduce((sum, b) => sum + b.byteLength, 0);
+  const combined = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const buf of buffers) {
+    combined.set(new Uint8Array(buf), offset);
+    offset += buf.byteLength;
+  }
+
+  return { audio: combined.buffer as ArrayBuffer, charactersUsed: totalChars };
+}
+
+/**
+ * Split text into chunks at paragraph boundaries (\n\n),
+ * each under the given character limit.
+ */
+function chunkText(text: string, limit: number): string[] {
+  const paragraphs = text.split("\n\n");
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const para of paragraphs) {
+    const addition = current ? `\n\n${para}` : para;
+    if (current.length + addition.length > limit && current) {
+      chunks.push(current);
+      current = para;
+    } else {
+      current += addition;
+    }
+  }
+  if (current) chunks.push(current);
+
+  return chunks;
 }
 
 /**
