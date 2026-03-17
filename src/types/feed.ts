@@ -50,6 +50,7 @@ export interface PodcastFeed {
   poll_error_count: number;
   source: FeedSource;
   spotify_show_id: string | null;
+  auto_transcribe: boolean;
   created_at: string;
   updated_at: string;
 }
