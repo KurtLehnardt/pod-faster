@@ -207,7 +207,7 @@ function mapItem(item: FeedItem): ParsedEpisode {
     audioUrl: item.enclosure?.url ?? null,
     publishedAt: parseDate(item.isoDate ?? item.pubDate),
     durationSeconds: parseDuration(
-      (item as Record<string, unknown>)["itunes:duration"] as string | undefined
+      (item as unknown as { itunes?: { duration?: string } }).itunes?.duration
     ),
     transcriptUrl: extractTranscriptUrl(item),
   };
