@@ -65,7 +65,7 @@ describe("Settings Flow", () => {
     default_style: "monologue" as const,
     default_tone: "serious" as const,
     default_voice_id: null,
-    subscription_tier: "premium",
+    subscription_tier: "premium" as const,
     created_at: "2026-03-01T00:00:00Z",
     updated_at: "2026-03-15T10:00:00Z",
   };

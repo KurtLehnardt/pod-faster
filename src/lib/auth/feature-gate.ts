@@ -10,8 +10,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
-
-type SubscriptionTier = "free" | "pro" | "premium";
+import type { SubscriptionTier } from "@/types/database.types";
 
 const TIER_HIERARCHY: Record<SubscriptionTier, number> = {
   free: 0,
@@ -59,8 +58,7 @@ export async function checkFeatureAccess(
     return { allowed: false, requiredTier, currentTier: "free" };
   }
 
-  const currentTier =
-    (data.subscription_tier as SubscriptionTier) ?? "free";
+  const currentTier = data.subscription_tier ?? "free";
   const allowed =
     TIER_HIERARCHY[currentTier] >= TIER_HIERARCHY[requiredTier];
 

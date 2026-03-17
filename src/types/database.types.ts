@@ -73,7 +73,7 @@ export interface Database {
           default_style: PodcastStyle;
           default_tone: PodcastTone;
           default_voice_id: string | null;
-          subscription_tier: string;
+          subscription_tier: SubscriptionTier;
           created_at: string;
           updated_at: string;
         };
@@ -85,7 +85,7 @@ export interface Database {
           default_style?: PodcastStyle;
           default_tone?: PodcastTone;
           default_voice_id?: string | null;
-          subscription_tier?: string;
+          subscription_tier?: SubscriptionTier;
           created_at?: string;
           updated_at?: string;
         };
@@ -97,7 +97,7 @@ export interface Database {
           default_style?: PodcastStyle;
           default_tone?: PodcastTone;
           default_voice_id?: string | null;
-          subscription_tier?: string;
+          subscription_tier?: SubscriptionTier;
           created_at?: string;
           updated_at?: string;
         };

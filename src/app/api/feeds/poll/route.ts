@@ -5,7 +5,7 @@
  * Body: { feedId?: string } -- poll specific feed or all active feeds
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { requireAuth } from "@/lib/auth/require-auth";
 import { pollFeed } from "@/lib/rss/poller";
 import { extractTranscript } from "@/lib/rss/transcript";
@@ -199,22 +199,20 @@ export async function POST(request: NextRequest) {
           newEpisodeCount = upsertData?.length ?? 0;
 
           // Auto-transcribe new episodes if the feed has it enabled.
-          // Runs inline (before response) — capped at 5 episodes per feed.
+          // Uses after() so the poll response is sent immediately
+          // while transcription continues in the background.
           if (feed.auto_transcribe && upsertData && upsertData.length > 0) {
             const newEpisodeIds = upsertData.map((ep) => ep.id);
-            try {
-              await autoTranscribeNewEpisodes(
-                feed.id,
-                feed.user_id,
-                newEpisodeIds,
-              );
-            } catch (atErr) {
-              // Auto-transcribe failure is non-fatal to the poll
-              console.error(
-                `[feeds/poll] Auto-transcribe error for feed ${feed.id}:`,
-                atErr,
-              );
-            }
+            after(async () => {
+              try {
+                await autoTranscribeNewEpisodes(feed.id, feed.user_id, newEpisodeIds);
+              } catch (err) {
+                console.error(
+                  `[feeds/poll] Auto-transcribe error for feed ${feed.id}:`,
+                  err,
+                );
+              }
+            });
           }
         }
       }
