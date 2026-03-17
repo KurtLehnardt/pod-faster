@@ -227,6 +227,21 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Backfill duration_seconds for existing episodes that have null values
+      const episodesWithDuration = result.allEpisodes.filter(
+        (ep) => ep.durationSeconds != null
+      );
+      if (episodesWithDuration.length > 0) {
+        for (const ep of episodesWithDuration) {
+          await supabase
+            .from("feed_episodes")
+            .update({ duration_seconds: ep.durationSeconds })
+            .eq("feed_id", feed.id)
+            .eq("guid", ep.guid)
+            .is("duration_seconds", null);
+        }
+      }
+
       // Determine the latest episode date
       const latestDate = result.newEpisodes
         .filter((ep) => ep.publishedAt !== null)

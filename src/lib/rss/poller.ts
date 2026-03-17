@@ -22,6 +22,8 @@ export interface PollResult {
     imageUrl: string | null;
   };
   newEpisodes: ParsedEpisode[];
+  /** All episodes from the feed (including existing), for metadata backfill. */
+  allEpisodes: ParsedEpisode[];
   totalEpisodes: number;
 }
 
@@ -60,6 +62,7 @@ export async function pollFeed(params: PollParams): Promise<PollResult> {
       imageUrl: parsed.imageUrl,
     },
     newEpisodes,
+    allEpisodes: parsed.episodes,
     totalEpisodes: parsed.episodes.length,
   };
 }
