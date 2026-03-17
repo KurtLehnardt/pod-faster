@@ -229,7 +229,7 @@ describe("exchangeCodeForTokens", () => {
     const body = new URLSearchParams(init?.body as string);
     expect(body.get("grant_type")).toBe("authorization_code");
     expect(body.get("code")).toBe("auth-code");
-    expect(body.get("redirect_uri")).toBe("http://localhost:3000/callback");
+    expect(body.get("redirect_uri")).toBe("http://localhost:3000/api/spotify/callback");
     expect(body.get("code_verifier")).toBe("pkce-verifier");
     expect(body.get("client_id")).toBe("test-client-id");
     expect(body.get("client_secret")).toBe("test-client-secret");
