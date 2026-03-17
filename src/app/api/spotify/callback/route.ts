@@ -74,7 +74,6 @@ export async function GET(request: NextRequest) {
   //    it matches the one used in the authorization request.
   const redirectUri =
     oauthState.redirectUri ||
-    process.env.SPOTIFY_REDIRECT_URI ||
     `${request.nextUrl.origin}/api/spotify/callback`;
 
   try {

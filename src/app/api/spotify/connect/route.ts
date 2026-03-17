@@ -32,11 +32,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 3. Auto-detect redirect URI from the request origin.
-  //    Falls back to SPOTIFY_REDIRECT_URI env var if set.
-  const redirectUri =
-    process.env.SPOTIFY_REDIRECT_URI ||
-    `${request.nextUrl.origin}/api/spotify/callback`;
+  // 3. Derive redirect URI from the request origin so it works on any
+  //    deployment (localhost, Vercel preview, production) without env vars.
+  const redirectUri = `${request.nextUrl.origin}/api/spotify/callback`;
 
   // 4. Generate PKCE code_verifier (64 random bytes, base64url)
   const codeVerifier = crypto.randomBytes(64).toString("base64url");
