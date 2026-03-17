@@ -92,4 +92,14 @@ describe("checkFeatureAccess", () => {
     expect(result.requiredTier).toBe("premium");
     expect(result.currentTier).toBe("free");
   });
+
+  it("falls back to free tier for unexpected tier string like 'enterprise'", async () => {
+    mockProfileTier("enterprise");
+
+    const result = await checkFeatureAccess("user-7", "auto_transcribe");
+
+    expect(result.allowed).toBe(false);
+    expect(result.requiredTier).toBe("premium");
+    expect(result.currentTier).toBe("free");
+  });
 });

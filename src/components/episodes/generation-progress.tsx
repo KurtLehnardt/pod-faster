@@ -11,7 +11,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { useEpisodeStatus } from "@/lib/hooks/use-episode-status";
 import type { EpisodeStatus } from "@/types/episode";
 
@@ -110,6 +110,8 @@ export function GenerationProgress({
             >
               {isDone && !isActive ? (
                 <CheckCircle2 className="size-4 text-primary/60" />
+              ) : isActive && isComplete ? (
+                <CheckCircle2 className="size-4 text-primary" />
               ) : isActive ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
@@ -149,24 +151,21 @@ export function GenerationProgress({
               Episode generated successfully!
             </p>
           </div>
-          {episode.audio_url && (
-            <a
-              href={episode.audio_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 inline-block text-sm text-primary underline underline-offset-2 hover:text-primary/80"
-            >
-              Listen to episode
-            </a>
-          )}
         </div>
       )}
 
-      {/* Close / Done button */}
+      {/* Action buttons */}
       {(isComplete || isFailed) && onClose && (
-        <Button variant="outline" onClick={onClose} className="w-full">
-          {isComplete ? "Done" : "Close"}
-        </Button>
+        <div className="flex gap-2">
+          {isComplete && (
+            <a href={`/episodes/${episodeId}`} className={buttonVariants({ variant: "default" }) + " flex-1"}>
+              View Episode
+            </a>
+          )}
+          <Button variant="outline" onClick={onClose} className={isComplete ? "flex-1" : "w-full"}>
+            {isComplete ? "Create Another" : "Close"}
+          </Button>
+        </div>
       )}
     </div>
   );

@@ -238,6 +238,49 @@ describe("autoTranscribeNewEpisodes", () => {
     expect(mockProcessTranscription).not.toHaveBeenCalled();
   });
 
+  it("marks episode as failed when processTranscription returns success:false", async () => {
+    mockFeedLookup(true);
+    mockCheckFeatureAccess.mockResolvedValue({
+      allowed: true,
+      requiredTier: "premium",
+      currentTier: "premium",
+    });
+    mockCheckSttBudget.mockResolvedValue({
+      allowed: true,
+      usedMinutes: 10,
+      limitMinutes: 120,
+      remainingMinutes: 110,
+    });
+    mockEpisodesFetch([
+      { id: "ep-1", audio_url: "https://example.com/ep1.mp3", duration_seconds: 600 },
+    ]);
+    // Claim succeeds
+    mockClaimEpisode({ id: "ep-1" });
+    // processTranscription returns failure (does NOT throw)
+    mockProcessTranscription.mockResolvedValue({
+      success: false,
+      transcript: null,
+      costCents: 0,
+      error: "Budget exhausted",
+    });
+    // Failure status update
+    mockFailureUpdate();
+
+    await autoTranscribeNewEpisodes("feed-1", "user-1", ["ep-1"]);
+
+    expect(mockProcessTranscription).toHaveBeenCalledTimes(1);
+
+    // The failure update should be the last mockFrom call:
+    // calls: feed lookup, episodes fetch, claim, failure update = 4 total
+    expect(mockFrom).toHaveBeenCalledTimes(4);
+    const failureChain = mockFrom.mock.results[3].value;
+    expect(failureChain.update).toHaveBeenCalledWith({
+      transcription_status: "failed",
+      transcription_error: "Budget exhausted",
+    });
+    expect(failureChain.eq).toHaveBeenCalledWith("id", "ep-1");
+  });
+
   it("marks episode as failed and continues loop when processTranscription throws", async () => {
     mockFeedLookup(true);
     mockCheckFeatureAccess.mockResolvedValue({
