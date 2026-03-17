@@ -35,6 +35,7 @@ export const createFeedSchema = z.object({
 export const updateFeedSchema = z.object({
   is_active: z.boolean().optional(),
   title: z.string().max(500).optional(),
+  auto_transcribe: z.boolean().optional(),
 });
 
 export const importOpmlSchema = z.object({

@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   Loader2,
   RefreshCw,
+  Sparkles,
   Trash2,
   AlertCircle,
 } from "lucide-react";
@@ -32,13 +33,21 @@ export default function FeedDetailPage({
   const [confirmDelete, setConfirmDelete] = useState(false);
   // Optimistic override for active toggle to avoid full-page re-render
   const [activeOverride, setActiveOverride] = useState<boolean | null>(null);
+  // Optimistic override for auto-transcribe toggle
+  const [autoTranscribeOverride, setAutoTranscribeOverride] = useState<boolean | null>(null);
 
-  // Clear optimistic override once server data catches up
+  // Clear optimistic overrides once server data catches up
   useEffect(() => {
     if (feed && activeOverride !== null && feed.is_active === activeOverride) {
       setActiveOverride(null);
     }
   }, [feed, activeOverride]);
+
+  useEffect(() => {
+    if (feed && autoTranscribeOverride !== null && feed.auto_transcribe === autoTranscribeOverride) {
+      setAutoTranscribeOverride(null);
+    }
+  }, [feed, autoTranscribeOverride]);
 
   async function handlePoll() {
     try {
@@ -75,8 +84,19 @@ export default function FeedDetailPage({
     }
   }
 
+  async function handleToggleAutoTranscribe(checked: boolean) {
+    setAutoTranscribeOverride(checked);
+    try {
+      await updateFeed(id, { auto_transcribe: checked });
+      refresh();
+    } catch {
+      setAutoTranscribeOverride(null);
+    }
+  }
+
   // Use optimistic value if set, otherwise use server value
   const isActive = activeOverride ?? feed?.is_active ?? false;
+  const isAutoTranscribe = autoTranscribeOverride ?? feed?.auto_transcribe ?? false;
 
   if (initialLoading) {
     return (
@@ -142,6 +162,17 @@ export default function FeedDetailPage({
             onCheckedChange={handleToggleActive}
           />
           <Label htmlFor="feed-active">{isActive ? "Active" : "Paused"}</Label>
+        </div>
+        <div className="flex items-center gap-2">
+          <Switch
+            id="feed-auto-transcribe"
+            checked={isAutoTranscribe}
+            onCheckedChange={handleToggleAutoTranscribe}
+          />
+          <Label htmlFor="feed-auto-transcribe" className="flex items-center gap-1">
+            Auto-transcribe
+            <Sparkles className="size-3 text-amber-500" />
+          </Label>
         </div>
         <Badge variant="secondary">{episodes.length} episodes</Badge>
         <div className="flex-1" />
