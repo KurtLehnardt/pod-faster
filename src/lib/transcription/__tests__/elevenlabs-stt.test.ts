@@ -87,12 +87,13 @@ describe("transcribeAudio", () => {
     // 65s -> ceil(65/60) = 2 minutes -> 2 * 0.67 = 1.34
     expect(result.costCents).toBeCloseTo(1.34);
 
-    // Verify the correct endpoint and body
+    // Verify the correct endpoint and FormData body
     expect(mockElevenLabsFetch).toHaveBeenCalledOnce();
     expect(mockElevenLabsFetch.mock.calls[0][0]).toBe("/speech-to-text");
-    const body = JSON.parse(mockElevenLabsFetch.mock.calls[0][1].body);
-    expect(body.audio_url).toBe("https://example.com/audio.mp3");
-    expect(body.model_id).toBe("eleven_flash_v2_5");
+    const body = mockElevenLabsFetch.mock.calls[0][1].body as FormData;
+    expect(body).toBeInstanceOf(FormData);
+    expect(body.get("cloud_storage_url")).toBe("https://example.com/audio.mp3");
+    expect(body.get("model_id")).toBe("scribe_v2");
   });
 
   it("uses top-level duration when no word timestamps are present", async () => {
