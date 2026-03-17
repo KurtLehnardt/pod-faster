@@ -158,7 +158,7 @@ export function GenerationProgress({
       {(isComplete || isFailed) && onClose && (
         <div className="flex gap-2">
           {isComplete && (
-            <a href="/episodes" className={buttonVariants({ variant: "default" }) + " flex-1"}>
+            <a href={`/episodes/${episodeId}`} className={buttonVariants({ variant: "default" }) + " flex-1"}>
               View Episode
             </a>
           )}
