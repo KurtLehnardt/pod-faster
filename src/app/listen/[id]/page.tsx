@@ -29,7 +29,7 @@ async function getEpisode(id: string) {
   let audioUrl: string | null = null;
   if (episode.audio_path) {
     const { data: signedData } = await supabase.storage
-      .from("audio")
+      .from("podcasts")
       .createSignedUrl(episode.audio_path, 60 * 60); // 1 hour
     audioUrl = signedData?.signedUrl ?? null;
   }

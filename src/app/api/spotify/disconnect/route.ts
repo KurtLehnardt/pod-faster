@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 import { revokeToken } from "@/lib/spotify/client";
 import {
   getValidAccessToken,
@@ -18,14 +18,8 @@ import { removeAllSubscriptions } from "@/lib/spotify/sync";
 
 export async function DELETE(request: NextRequest) {
   // 1. Auth check
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { user, response } = await requireAuth();
+  if (response) return response;
 
   // 2. Revoke access token (best-effort)
   try {

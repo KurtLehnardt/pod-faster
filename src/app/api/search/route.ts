@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 import { gatherNews } from "@/lib/search/gatherer";
 
 interface SearchRequestBody {
@@ -13,11 +14,8 @@ function isValidBody(body: unknown): body is SearchRequestBody {
 }
 
 export async function POST(request: NextRequest) {
-  // Basic auth check — presence of authorization header
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { response } = await requireAuth();
+  if (response) return response;
 
   let body: unknown;
   try {

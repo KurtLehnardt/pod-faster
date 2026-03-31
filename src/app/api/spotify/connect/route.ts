@@ -8,19 +8,13 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 import crypto from "node:crypto";
 
 export async function POST(request: NextRequest) {
   // 1. Auth check
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { user, response } = await requireAuth();
+  if (response) return response;
 
   // 2. Validate required env vars
   const clientId = process.env.SPOTIFY_CLIENT_ID;
@@ -64,8 +58,8 @@ export async function POST(request: NextRequest) {
   const url = `https://accounts.spotify.com/authorize?${params}`;
 
   // 8. Store PKCE state + redirect URI in cookie
-  const response = NextResponse.json({ url });
-  response.cookies.set(
+  const resp = NextResponse.json({ url });
+  resp.cookies.set(
     "spotify_oauth",
     JSON.stringify({ codeVerifier, state, redirectUri }),
     {
@@ -77,5 +71,5 @@ export async function POST(request: NextRequest) {
     }
   );
 
-  return response;
+  return resp;
 }

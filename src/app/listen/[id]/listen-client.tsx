@@ -10,6 +10,7 @@ import {
   Copy,
   Headphones,
   Share2,
+  VolumeX,
 } from "lucide-react";
 import type { Json } from "@/types/database.types";
 
@@ -127,9 +128,16 @@ export function ListenPageClient({ episode }: { episode: Episode }) {
           </div>
 
           {/* Audio player */}
-          {episode.audioUrl && (
+          {episode.audioUrl ? (
             <div className="mb-6 rounded-lg border border-violet-500/30 bg-violet-600/5 p-4">
               <audio controls src={episode.audioUrl} className="w-full" />
+            </div>
+          ) : (
+            <div className="mb-6 flex items-center gap-3 rounded-lg border border-border bg-muted/30 p-4">
+              <VolumeX className="size-5 shrink-0 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                Audio is currently unavailable for this episode.
+              </p>
             </div>
           )}
 

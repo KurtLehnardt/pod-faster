@@ -161,9 +161,35 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Rate limit: 2 episodes per day (unless admin)
-  const ADMIN_EMAIL = "krlehnardt@gmail.com";
-  const isAdmin = user.email === ADMIN_EMAIL;
+  // S11: Input length validation for topicQuery
+  if (body.topicQuery && body.topicQuery.length > 500) {
+    return NextResponse.json(
+      { error: "Topic query must be 500 characters or fewer" },
+      { status: 400 }
+    );
+  }
+
+  // Rate limit: 2 episodes per day (bypass for premium users)
+  // S6: Use subscription_tier from the profiles table instead of hardcoded email.
+  // Falls back to ADMIN_EMAILS env var (comma-separated) if profile lookup fails.
+  const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+
+  let isAdmin = ADMIN_EMAILS.includes((user.email ?? "").toLowerCase());
+
+  if (!isAdmin) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("subscription_tier")
+      .eq("id", user.id)
+      .single();
+
+    if (profile?.subscription_tier === "premium") {
+      isAdmin = true;
+    }
+  }
 
   if (!isAdmin) {
     const todayStart = new Date();

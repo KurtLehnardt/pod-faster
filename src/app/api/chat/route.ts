@@ -59,8 +59,19 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // S11: Input length validation
+  if (body.message.length > 2000) {
+    return NextResponse.json(
+      { error: "Message must be 2000 characters or fewer" },
+      { status: 400 }
+    );
+  }
+
+  // Limit context window to control costs and prevent token limit errors (D1/P3)
+  const recentHistory = body.history.slice(-20);
+
   // Build conversation messages for Claude
-  const conversationMessages = body.history
+  const conversationMessages = recentHistory
     .filter((m) => m.content.trim().length > 0)
     .map((m) => ({
       role: m.role as "user" | "assistant",
