@@ -60,10 +60,15 @@ export function ListenPageClient({ episode }: { episode: Episode }) {
   const shareUrl = typeof window !== "undefined" ? window.location.href : "";
   const segments = getSegments(episode.script);
 
-  function handleCopyLink() {
-    navigator.clipboard.writeText(window.location.href);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  async function handleCopyLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback: prompt user to copy manually
+      window.prompt("Copy this link:", window.location.href);
+    }
   }
 
   function shareTwitter() {

@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://pod-faster.com";
@@ -35,7 +35,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Dynamic listen pages — fetch completed episodes
   let episodePages: MetadataRoute.Sitemap = [];
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { data: episodes } = await supabase
       .from("episodes")
       .select("id, created_at")

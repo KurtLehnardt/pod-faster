@@ -7,10 +7,10 @@ export function GET() {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://pod-faster.com";
 
   const content = `# Pod-Faster robots.txt
-# Welcome, bots!
 
 User-agent: *
 Allow: /
+Disallow: /api/
 
 # Explicitly allow AI crawlers
 User-agent: GPTBot
@@ -22,23 +22,9 @@ Allow: /
 User-agent: PerplexityBot
 Allow: /
 
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-# Disallow private/auth routes
-User-agent: *
-Disallow: /api/
-Disallow: /(app)/
-Disallow: /(auth)/
-
-# Sitemaps
 Sitemap: ${baseUrl}/sitemap.xml
 
-# LLMs.txt
-# See: ${baseUrl}/llms.txt
+# LLMs.txt — see ${baseUrl}/llms.txt
 `;
 
   return new Response(content, {
