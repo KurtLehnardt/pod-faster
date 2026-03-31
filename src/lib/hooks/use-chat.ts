@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
 import type { ChatMessage } from "@/types/chat";
 
 export interface UseChatReturn {
@@ -8,6 +9,8 @@ export interface UseChatReturn {
   messages: ChatMessage[];
   /** Whether the AI is currently generating a response */
   isLoading: boolean;
+  /** Whether chat history is being loaded from the database */
+  isLoadingHistory: boolean;
   /** Last error, if any */
   error: string | null;
   /** Topics extracted from the conversation */
@@ -23,12 +26,54 @@ export interface UseChatReturn {
 /**
  * Manages chat state: messages, streaming responses, and topic extraction.
  * Sends messages to /api/chat and handles the streaming response.
+ * Loads the last 50 messages from the database on mount.
  */
 export function useChat(): UseChatReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [topics, setTopics] = useState<string[]>([]);
+
+  // U7: Load chat history from the database on mount
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadHistory() {
+      try {
+        const supabase = createClient();
+        const { data: rows, error: fetchError } = await supabase
+          .from("chat_messages")
+          .select("id, role, content, created_at")
+          .order("created_at", { ascending: true })
+          .limit(50);
+
+        if (fetchError) {
+          console.error("[chat] Failed to load history:", fetchError.message);
+          return;
+        }
+
+        if (!cancelled && rows && rows.length > 0) {
+          const loaded: ChatMessage[] = rows.map((r) => ({
+            id: r.id,
+            role: r.role as "user" | "assistant",
+            content: r.content,
+            created_at: r.created_at,
+          }));
+          setMessages(loaded);
+        }
+      } catch (err) {
+        console.error("[chat] Failed to load history:", err);
+      } finally {
+        if (!cancelled) {
+          setIsLoadingHistory(false);
+        }
+      }
+    }
+
+    loadHistory();
+    return () => { cancelled = true; };
+  }, []);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const sendMessage = useCallback(
@@ -182,6 +227,7 @@ export function useChat(): UseChatReturn {
   return {
     messages,
     isLoading,
+    isLoadingHistory,
     error,
     topics,
     sendMessage,
