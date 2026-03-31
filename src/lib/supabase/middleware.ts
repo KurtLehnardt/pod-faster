@@ -37,7 +37,7 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Protected routes — redirect to /login if not authenticated
-  const protectedPrefixes = ["/chat", "/episodes", "/settings", "/topics"];
+  const protectedPrefixes = ["/chat", "/episodes", "/feeds", "/settings", "/topics"];
   const isProtected = protectedPrefixes.some(
     (prefix) => pathname === prefix || pathname.startsWith(prefix + "/")
   );
