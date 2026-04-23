@@ -8,10 +8,8 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkFeatureAccess } from "@/lib/auth/feature-gate";
-import {
-  checkSttBudget,
-  processTranscription,
-} from "@/lib/transcription/orchestrator";
+import { checkTierBudget } from "@/lib/transcription/tier-budget";
+import { processTranscription } from "@/lib/transcription/orchestrator";
 
 /** Max episodes to auto-transcribe per poll cycle to limit cost/time. */
 const MAX_EPISODES_PER_POLL = 5;
@@ -20,7 +18,7 @@ const MAX_EPISODES_PER_POLL = 5;
  * Auto-transcribe new episodes for a feed.
  *
  * Checks that the feed has auto_transcribe enabled, the user has premium
- * access, and the STT budget allows it. Then atomically claims episodes
+ * access, and the tier budget allows it. Then atomically claims episodes
  * and processes them sequentially.
  */
 export async function autoTranscribeNewEpisodes(
@@ -45,12 +43,11 @@ export async function autoTranscribeNewEpisodes(
   const { allowed } = await checkFeatureAccess(userId, "auto_transcribe");
   if (!allowed) return;
 
-  // Batch fail-fast: check STT budget before processing any episodes
-  // (processTranscription also checks per-episode, this is an optimization)
-  const budget = await checkSttBudget(userId);
+  // Batch fail-fast: check tier budget before processing any episodes
+  const budget = await checkTierBudget(userId, "premium");
   if (!budget.allowed) {
     console.log(
-      `[auto-transcribe] User ${userId} STT budget exhausted, skipping`,
+      `[auto-transcribe] User ${userId} tier budget exhausted, skipping`,
     );
     return;
   }
@@ -90,6 +87,7 @@ export async function autoTranscribeNewEpisodes(
         userId,
         audioUrl,
         durationSeconds: ep.duration_seconds,
+        tier: "premium",
       });
 
       if (!result.success) {

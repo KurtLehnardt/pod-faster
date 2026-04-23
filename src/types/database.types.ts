@@ -498,6 +498,8 @@ export interface Database {
           transcription_status: TranscriptionStatus;
           transcription_error: string | null;
           elevenlabs_cost_cents: number;
+          is_partial_transcript: boolean;
+          transcript_clip_range: string | null;
           created_at: string;
         };
         Insert: {
@@ -515,6 +517,8 @@ export interface Database {
           transcription_status?: TranscriptionStatus;
           transcription_error?: string | null;
           elevenlabs_cost_cents?: number;
+          is_partial_transcript?: boolean;
+          transcript_clip_range?: string | null;
           created_at?: string;
         };
         Update: {
@@ -532,6 +536,8 @@ export interface Database {
           transcription_status?: TranscriptionStatus;
           transcription_error?: string | null;
           elevenlabs_cost_cents?: number;
+          is_partial_transcript?: boolean;
+          transcript_clip_range?: string | null;
           created_at?: string;
         };
         Relationships: [
@@ -724,7 +730,16 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      stt_monthly_cost: {
+        Args: { p_user_id: string };
+        Returns: number;
+      };
+      stt_weekly_count: {
+        Args: { p_user_id: string };
+        Returns: number;
+      };
+    };
     Enums: Record<string, never>;
   };
 }

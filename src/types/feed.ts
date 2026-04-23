@@ -70,6 +70,8 @@ export interface FeedEpisode {
   transcription_status: TranscriptionStatus;
   transcription_error: string | null;
   elevenlabs_cost_cents: number;
+  is_partial_transcript: boolean;
+  transcript_clip_range: string | null;
   created_at: string;
 }
 

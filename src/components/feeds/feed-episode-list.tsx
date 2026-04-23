@@ -43,6 +43,35 @@ function formatDuration(seconds: number | null): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
+function getTranscriptLabel(ep: FeedEpisode): string {
+  if (ep.transcription_status === "completed" && ep.is_partial_transcript) {
+    return "5-min Preview";
+  }
+  return statusLabel[ep.transcription_status];
+}
+
+function getTranscriptVariant(ep: FeedEpisode): "default" | "secondary" | "destructive" | "outline" {
+  if (ep.transcription_status === "completed" && ep.is_partial_transcript) {
+    return "secondary";
+  }
+  return statusVariant[ep.transcription_status];
+}
+
+function canTranscribe(ep: FeedEpisode): boolean {
+  if (!ep.audio_url) return false;
+  if (ep.transcription_status === "none" || ep.transcription_status === "failed") return true;
+  // Allow re-transcription of partial transcripts (upgraded users)
+  if (ep.transcription_status === "completed" && ep.is_partial_transcript) return true;
+  return false;
+}
+
+function getButtonLabel(ep: FeedEpisode): string {
+  if (ep.transcription_status === "completed" && ep.is_partial_transcript) {
+    return "Full Transcribe";
+  }
+  return "Transcribe";
+}
+
 export function FeedEpisodeList({ episodes, onRefresh }: FeedEpisodeListProps) {
   const [transcribingId, setTranscribingId] = useState<string | null>(null);
 
@@ -86,10 +115,10 @@ export function FeedEpisodeList({ episodes, onRefresh }: FeedEpisodeListProps) {
               {ep.duration_seconds && <span>{formatDuration(ep.duration_seconds)}</span>}
             </div>
           </div>
-          <Badge variant={statusVariant[ep.transcription_status]}>
-            {statusLabel[ep.transcription_status]}
+          <Badge variant={getTranscriptVariant(ep)}>
+            {getTranscriptLabel(ep)}
           </Badge>
-          {(ep.transcription_status === "none" || ep.transcription_status === "failed") && ep.audio_url && (
+          {canTranscribe(ep) && (
             <Button
               size="sm"
               variant="outline"
@@ -97,7 +126,7 @@ export function FeedEpisodeList({ episodes, onRefresh }: FeedEpisodeListProps) {
               disabled={transcribingId === ep.id}
             >
               {transcribingId === ep.id && <Loader2 className="mr-1 size-3 animate-spin" />}
-              Transcribe
+              {getButtonLabel(ep)}
             </Button>
           )}
         </div>

@@ -17,13 +17,19 @@ vi.mock("@/lib/auth/feature-gate", () => ({
   checkFeatureAccess: (...args: unknown[]) => mockCheckFeatureAccess(...args),
 }));
 
+// -- Mock tier-budget ----------------------------------------------------------
+
+const mockCheckTierBudget = vi.fn();
+
+vi.mock("@/lib/transcription/tier-budget", () => ({
+  checkTierBudget: (...args: unknown[]) => mockCheckTierBudget(...args),
+}));
+
 // -- Mock transcription orchestrator -------------------------------------------
 
-const mockCheckSttBudget = vi.fn();
 const mockProcessTranscription = vi.fn();
 
 vi.mock("@/lib/transcription/orchestrator", () => ({
-  checkSttBudget: (...args: unknown[]) => mockCheckSttBudget(...args),
   processTranscription: (...args: unknown[]) =>
     mockProcessTranscription(...args),
 }));
@@ -82,8 +88,29 @@ function mockClaimEpisode(
 function mockFailureUpdate() {
   mockFrom.mockImplementationOnce(() => {
     const chain = createChain();
-    // .update().eq() returns resolved chain (terminal)
     return chain;
+  });
+}
+
+/** Helper: mock tier budget as allowed. */
+function tierBudgetAllowed() {
+  mockCheckTierBudget.mockResolvedValue({
+    allowed: true,
+    reason: null,
+    usedCentsThisMonth: 50,
+    remainingCents: 4950,
+    weeklyClipsUsed: 0,
+  });
+}
+
+/** Helper: mock tier budget as denied. */
+function tierBudgetDenied() {
+  mockCheckTierBudget.mockResolvedValue({
+    allowed: false,
+    reason: "Monthly budget exhausted",
+    usedCentsThisMonth: 5000,
+    remainingCents: 0,
+    weeklyClipsUsed: 0,
   });
 }
 
@@ -94,17 +121,16 @@ describe("autoTranscribeNewEpisodes", () => {
     vi.clearAllMocks();
     mockFrom.mockImplementation(() => createChain());
     mockCheckFeatureAccess.mockReset();
-    mockCheckSttBudget.mockReset();
+    mockCheckTierBudget.mockReset();
     mockProcessTranscription.mockReset();
   });
 
   it("returns immediately when episode IDs array is empty", async () => {
     await autoTranscribeNewEpisodes("feed-1", "user-1", []);
 
-    // No DB calls should have been made
     expect(mockFrom).not.toHaveBeenCalled();
     expect(mockCheckFeatureAccess).not.toHaveBeenCalled();
-    expect(mockCheckSttBudget).not.toHaveBeenCalled();
+    expect(mockCheckTierBudget).not.toHaveBeenCalled();
   });
 
   it("returns without processing when feed has auto_transcribe disabled", async () => {
@@ -112,10 +138,9 @@ describe("autoTranscribeNewEpisodes", () => {
 
     await autoTranscribeNewEpisodes("feed-1", "user-1", ["ep-1"]);
 
-    // Should have checked the feed but nothing else
     expect(mockFrom).toHaveBeenCalledTimes(1);
     expect(mockCheckFeatureAccess).not.toHaveBeenCalled();
-    expect(mockCheckSttBudget).not.toHaveBeenCalled();
+    expect(mockCheckTierBudget).not.toHaveBeenCalled();
     expect(mockProcessTranscription).not.toHaveBeenCalled();
   });
 
@@ -133,27 +158,22 @@ describe("autoTranscribeNewEpisodes", () => {
       "user-1",
       "auto_transcribe",
     );
-    expect(mockCheckSttBudget).not.toHaveBeenCalled();
+    expect(mockCheckTierBudget).not.toHaveBeenCalled();
     expect(mockProcessTranscription).not.toHaveBeenCalled();
   });
 
-  it("returns without processing when STT budget is exhausted", async () => {
+  it("returns without processing when tier budget is exhausted", async () => {
     mockFeedLookup(true);
     mockCheckFeatureAccess.mockResolvedValue({
       allowed: true,
       requiredTier: "premium",
       currentTier: "premium",
     });
-    mockCheckSttBudget.mockResolvedValue({
-      allowed: false,
-      usedMinutes: 120,
-      limitMinutes: 120,
-      remainingMinutes: 0,
-    });
+    tierBudgetDenied();
 
     await autoTranscribeNewEpisodes("feed-1", "user-1", ["ep-1"]);
 
-    expect(mockCheckSttBudget).toHaveBeenCalledWith("user-1");
+    expect(mockCheckTierBudget).toHaveBeenCalledWith("user-1", "premium");
     expect(mockProcessTranscription).not.toHaveBeenCalled();
   });
 
@@ -164,13 +184,7 @@ describe("autoTranscribeNewEpisodes", () => {
       requiredTier: "premium",
       currentTier: "premium",
     });
-    mockCheckSttBudget.mockResolvedValue({
-      allowed: true,
-      usedMinutes: 0,
-      limitMinutes: 120,
-      remainingMinutes: 120,
-    });
-    // Episodes query returns empty (filtered by .not("audio_url", "is", null))
+    tierBudgetAllowed();
     mockEpisodesFetch([]);
 
     await autoTranscribeNewEpisodes("feed-1", "user-1", ["ep-1"]);
@@ -178,29 +192,25 @@ describe("autoTranscribeNewEpisodes", () => {
     expect(mockProcessTranscription).not.toHaveBeenCalled();
   });
 
-  it("claims episode, calls processTranscription on happy path", async () => {
+  it("claims episode, calls processTranscription with tier:'premium'", async () => {
     mockFeedLookup(true);
     mockCheckFeatureAccess.mockResolvedValue({
       allowed: true,
       requiredTier: "premium",
       currentTier: "premium",
     });
-    mockCheckSttBudget.mockResolvedValue({
-      allowed: true,
-      usedMinutes: 10,
-      limitMinutes: 120,
-      remainingMinutes: 110,
-    });
+    tierBudgetAllowed();
     mockEpisodesFetch([
       { id: "ep-1", audio_url: "https://example.com/ep1.mp3", duration_seconds: 600 },
     ]);
-    // Claim succeeds
     mockClaimEpisode({ id: "ep-1" });
     mockProcessTranscription.mockResolvedValue({
       success: true,
       transcript: "Hello world",
       costCents: 6.7,
       error: null,
+      isPartial: false,
+      clipRange: null,
     });
 
     await autoTranscribeNewEpisodes("feed-1", "user-1", ["ep-1"]);
@@ -210,6 +220,7 @@ describe("autoTranscribeNewEpisodes", () => {
       userId: "user-1",
       audioUrl: "https://example.com/ep1.mp3",
       durationSeconds: 600,
+      tier: "premium",
     });
   });
 
@@ -220,21 +231,14 @@ describe("autoTranscribeNewEpisodes", () => {
       requiredTier: "premium",
       currentTier: "premium",
     });
-    mockCheckSttBudget.mockResolvedValue({
-      allowed: true,
-      usedMinutes: 0,
-      limitMinutes: 120,
-      remainingMinutes: 120,
-    });
+    tierBudgetAllowed();
     mockEpisodesFetch([
       { id: "ep-1", audio_url: "https://example.com/ep1.mp3", duration_seconds: 300 },
     ]);
-    // Claim fails (another process took it)
     mockClaimEpisode(null, { message: "No rows returned" });
 
     await autoTranscribeNewEpisodes("feed-1", "user-1", ["ep-1"]);
 
-    // processTranscription should NOT be called
     expect(mockProcessTranscription).not.toHaveBeenCalled();
   });
 
@@ -245,32 +249,25 @@ describe("autoTranscribeNewEpisodes", () => {
       requiredTier: "premium",
       currentTier: "premium",
     });
-    mockCheckSttBudget.mockResolvedValue({
-      allowed: true,
-      usedMinutes: 10,
-      limitMinutes: 120,
-      remainingMinutes: 110,
-    });
+    tierBudgetAllowed();
     mockEpisodesFetch([
       { id: "ep-1", audio_url: "https://example.com/ep1.mp3", duration_seconds: 600 },
     ]);
-    // Claim succeeds
     mockClaimEpisode({ id: "ep-1" });
-    // processTranscription returns failure (does NOT throw)
     mockProcessTranscription.mockResolvedValue({
       success: false,
       transcript: null,
       costCents: 0,
       error: "Budget exhausted",
+      isPartial: false,
+      clipRange: null,
     });
-    // Failure status update
     mockFailureUpdate();
 
     await autoTranscribeNewEpisodes("feed-1", "user-1", ["ep-1"]);
 
     expect(mockProcessTranscription).toHaveBeenCalledTimes(1);
 
-    // The failure update should be the last mockFrom call:
     // calls: feed lookup, episodes fetch, claim, failure update = 4 total
     expect(mockFrom).toHaveBeenCalledTimes(4);
     const failureChain = mockFrom.mock.results[3].value;
@@ -288,12 +285,7 @@ describe("autoTranscribeNewEpisodes", () => {
       requiredTier: "premium",
       currentTier: "premium",
     });
-    mockCheckSttBudget.mockResolvedValue({
-      allowed: true,
-      usedMinutes: 0,
-      limitMinutes: 120,
-      remainingMinutes: 120,
-    });
+    tierBudgetAllowed();
     mockEpisodesFetch([
       { id: "ep-1", audio_url: "https://example.com/ep1.mp3", duration_seconds: 300 },
       { id: "ep-2", audio_url: "https://example.com/ep2.mp3", duration_seconds: 600 },
@@ -304,7 +296,6 @@ describe("autoTranscribeNewEpisodes", () => {
     mockProcessTranscription.mockRejectedValueOnce(
       new Error("ElevenLabs API error: 500"),
     );
-    // Failure update for ep-1
     mockFailureUpdate();
 
     // Second episode: claim succeeds, processTranscription succeeds
@@ -314,16 +305,15 @@ describe("autoTranscribeNewEpisodes", () => {
       transcript: "Second episode text",
       costCents: 4.0,
       error: null,
+      isPartial: false,
+      clipRange: null,
     });
 
     await autoTranscribeNewEpisodes("feed-1", "user-1", ["ep-1", "ep-2"]);
 
-    // Both episodes should have been attempted
     expect(mockProcessTranscription).toHaveBeenCalledTimes(2);
-
-    // Second episode should still have been processed despite first failure
     expect(mockProcessTranscription).toHaveBeenCalledWith(
-      expect.objectContaining({ feedEpisodeId: "ep-2" }),
+      expect.objectContaining({ feedEpisodeId: "ep-2", tier: "premium" }),
     );
   });
 });

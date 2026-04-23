@@ -126,6 +126,34 @@ async function transcribeViaUpload(audioUrl: string): Promise<SttResult> {
   };
 }
 
+// ── Blob-based transcription (for pre-sliced audio) ─────────
+
+/**
+ * Transcribe a pre-sliced audio blob via multipart upload.
+ *
+ * Used by the free-tier path where audio has already been sliced
+ * by the audio-slicer module.
+ */
+export async function transcribeAudioBlob(blob: Blob): Promise<SttResult> {
+  const formData = new FormData();
+  formData.append("audio", blob, "audio.mp3");
+  formData.append("model_id", STT_MODEL);
+
+  const response = await elevenLabsFetch(STT_PATH, {
+    method: "POST",
+    body: formData,
+  });
+
+  const data = (await response.json()) as SttResponse;
+  const durationSeconds = extractDuration(data);
+
+  return {
+    text: data.text,
+    durationSeconds,
+    costCents: calculateSttCost(durationSeconds),
+  };
+}
+
 // ── Public API ──────────────────────────────────────────────
 
 /**
